@@ -1,0 +1,18 @@
+# Local machine configuration
+includes/db.local.php
+
+# Uploaded user evidence files
+uploads/evidence/*
+!uploads/evidence/.htaccess
+
+# Temporary and backup files
+backups/
+*.tmp
+*.bak
+*.log
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
