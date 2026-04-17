@@ -197,4 +197,4 @@ GitHub: https://github.com/phone292025
 
 ## License
 
-This project is provided for academic coursework and portfolio demonstration. All rights are reserved by the EcoTrack project team unless a separate open-source license is added.
+This project is licensed under the [MIT License](LICENSE).
