@@ -15,11 +15,8 @@ EcoTrack is a web-based sustainability tracking system that helps users record e
 - [Installation](#installation)
 - [Usage](#usage)
 - [Default Login Accounts](#default-login-accounts)
-- [Documentation](#documentation)
-- [Screenshots](#screenshots)
 - [Roadmap](#roadmap)
 - [Contribution Guidelines](#contribution-guidelines)
-- [Credits](#credits)
 - [Contact](#contact)
 - [License](#license)
 
@@ -165,29 +162,6 @@ Password: mod123
 ```
 
 Participants can create an account using the registration page.
-
-## Documentation
-
-Additional project documentation is available in:
-
-- [Data Dictionary](docs/preliminary-draft/data-dictionary.md)
-- [ERD Notes](docs/preliminary-draft/erd.md)
-- [Flowcharts](docs/preliminary-draft/flowchart.md)
-- [Navigation Map](docs/preliminary-draft/navigation-map.md)
-- [Wireframes](docs/preliminary-draft/wireframes.md)
-- [Draw.io ERD File](docs/preliminary-draft/ecotrack-erd.drawio)
-
-## Screenshots
-
-Screenshots are not currently included in the repository. Add final application screenshots or a demo GIF here before submission if required.
-
-Suggested screenshots:
-
-- Login page
-- Participant dashboard
-- Green Shop
-- Moderator review page
-- Admin analytics dashboard
 
 ## Roadmap
 
