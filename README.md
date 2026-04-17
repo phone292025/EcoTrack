@@ -207,14 +207,6 @@ This is an academic group project. If contributing:
 4. Do not commit local database credentials or uploaded evidence files.
 5. Submit changes with a clear commit message.
 
-## Credits
-
-EcoTrack was developed as a group project by:
-
-- Phone Myat Ko
-- Musaddiq Ali
-- Yar Zar Min
-
 Third-party library:
 
 - Chart.js for dashboard charts and visual data summaries
