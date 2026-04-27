@@ -2510,6 +2510,18 @@ tr:hover td { background: rgba(45,147,108,0.04); }
 }
 
 @media (max-width: 768px) {
+  .shop-page .shop-filter-card {
+    display: none;
+  }
+
+  .shop-page .shop-filter-search {
+    display: none;
+  }
+
+  .shop-page .shop-filter-category {
+    display: none;
+  }
+
   .shop-page .shop-hero {
     margin-top: var(--space-3);
     margin-bottom: var(--space-3);
@@ -3209,6 +3221,7 @@ tr:hover td { background: rgba(45,147,108,0.04); }
     margin-top: 0;
     margin-bottom: var(--space-3);
     gap: var(--space-2);
+    align-items: flex-start;
   }
   .profile-page .section-header__title {
     font-size: clamp(1.75rem, 7vw, 2.1rem);
@@ -3253,6 +3266,7 @@ tr:hover td { background: rgba(45,147,108,0.04); }
   .profile-page .card {
     padding: var(--space-3);
     border-radius: 18px;
+    overflow: hidden;
   }
   .profile-page .card-title {
     font-size: 1.08rem;
@@ -3268,18 +3282,36 @@ tr:hover td { background: rgba(45,147,108,0.04); }
   .footer-copy  { text-align:center; }
 
   .impact-grid { grid-template-columns:1fr; }
-  .profile-chart-card__chart { min-height: 210px; padding-top: 0; }
+  .profile-page .profile-layout {
+    gap: var(--space-3);
+  }
+  .profile-chart-card {
+    padding-bottom: var(--space-3);
+  }
+  .profile-chart-card__chart {
+    min-height: 230px;
+    padding-top: 0;
+    overflow: hidden;
+  }
   .profile-page #co2Chart {
+    width: 100% !important;
+    max-width: 100%;
     max-height: 220px;
   }
   .profile-impact-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .profile-page .profile-impact-grid {
     gap: 0.75rem;
     max-width: 100%;
+    align-items: start;
+  }
+  .profile-page .profile-impact-stat {
+    text-align: center;
   }
   .profile-page .profile-impact-stat__label {
     font-size: 0.68rem;
     letter-spacing: 0.02em;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
   }
   .profile-page .profile-impact-stat__value {
     font-size: 1rem;
@@ -3525,22 +3557,36 @@ tr:hover td { background: rgba(45,147,108,0.04); }
     font-size: 1.05rem;
   }
   .profile-chart-card__chart {
-    min-height: 180px;
+    min-height: 200px;
   }
   .profile-page #co2Chart {
-    max-height: 190px;
+    max-height: 200px;
   }
   .profile-page .section-header__text {
     font-size: 0.94rem;
   }
+  .profile-page .section-header .badge {
+    align-self: flex-start;
+  }
   .profile-page .profile-impact-grid {
-    gap: 0.45rem;
+    grid-template-columns: 1fr;
+    gap: 0.7rem;
   }
   .profile-page .profile-impact-stat__label {
-    font-size: 0.62rem;
+    font-size: 0.7rem;
   }
   .profile-page .profile-impact-stat__value {
-    font-size: 0.95rem;
+    font-size: 1.1rem;
+  }
+  .profile-page .profile-history-card__scroller {
+    max-height: 18.5rem;
+    padding-right: 0;
+  }
+  .profile-page .activity-list__item {
+    gap: 0.45rem;
+  }
+  .profile-page .badge-item {
+    padding: var(--space-3);
   }
   .profile-page .badge-gallery.badge-gallery--profile {
     grid-template-columns: 1fr 1fr;
@@ -4596,6 +4642,10 @@ tr:hover td { background: rgba(45,147,108,0.04); }
   margin-bottom: var(--space-4);
 }
 
+.admin-ops-toggle {
+  display: none;
+}
+
 .admin-ops-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -4947,6 +4997,16 @@ tr:hover td { background: rgba(45,147,108,0.04); }
   .admin-card-header {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .admin-ops-toggle {
+    display: inline-flex;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .admin-ops-card.is-collapsed .admin-ops-grid {
+    display: none;
   }
 
   .admin-card-metrics {

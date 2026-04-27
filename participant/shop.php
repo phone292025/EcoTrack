@@ -122,13 +122,13 @@ require_once __DIR__ . '/../includes/header.php';
   <?php if ($err): ?><div class="flash-message flash-error" role="alert"><?= sanitise($err) ?></div><?php endif; ?>
   <?php if ($ok): ?><div class="flash-message flash-success" role="status"><?= sanitise($ok) ?></div><?php endif; ?>
 
-  <div class="card" style="margin-bottom:var(--space-4);">
+  <div class="card shop-filter-card" style="margin-bottom:var(--space-4);">
     <form method="GET" class="shop-filter-form">
-      <div class="form-group" style="margin-bottom:0;">
+      <div class="form-group shop-filter-search" style="margin-bottom:0;">
         <label for="shop_q">Search rewards</label>
         <input type="text" id="shop_q" name="q" value="<?= sanitise($searchQuery) ?>" placeholder="Search by name or description">
       </div>
-      <div class="form-group" style="margin-bottom:0;">
+      <div class="form-group shop-filter-category" style="margin-bottom:0;">
         <label for="shop_category">Category</label>
         <select id="shop_category" name="category">
           <option value="">All categories</option>

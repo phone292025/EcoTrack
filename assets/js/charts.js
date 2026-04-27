@@ -85,6 +85,7 @@ function initCategoryChart(data) {
 function initCO2Chart(data) {
   const canvas = document.getElementById('co2Chart');
   if (!canvas || typeof Chart === 'undefined') return;
+  const isMobile = window.matchMedia('(max-width: 768px)').matches;
 
   if (!data.labels || data.labels.length === 0) {
     const msg = document.createElement('p');
@@ -115,7 +116,15 @@ function initCO2Chart(data) {
       responsive         : true,
       maintainAspectRatio: true,
       plugins: {
-        legend: { position: 'top' },
+        legend: {
+          position: 'top',
+          labels: {
+            boxWidth: isMobile ? 28 : 40,
+            boxHeight: isMobile ? 10 : 12,
+            padding: isMobile ? 10 : 16,
+            font: { size: isMobile ? 11 : 12 },
+          },
+        },
         tooltip: {
           callbacks: {
             label: (ctx) => ` ${ctx.parsed.y.toFixed(3)} kg CO₂ saved`,
@@ -125,11 +134,18 @@ function initCO2Chart(data) {
       scales: {
         x: {
           grid : { display: false },
-          ticks: { maxTicksLimit: 8, maxRotation: 45 },
+          ticks: {
+            maxTicksLimit: isMobile ? 4 : 8,
+            maxRotation: isMobile ? 0 : 45,
+            minRotation: 0,
+            font: { size: isMobile ? 10 : 12 },
+          },
         },
         y: {
           beginAtZero: true,
           ticks: {
+            maxTicksLimit: isMobile ? 5 : 8,
+            font: { size: isMobile ? 10 : 12 },
             callback: (v) => v.toFixed(2) + ' kg',
           },
           grid: { color: 'rgba(0,0,0,0.06)' },

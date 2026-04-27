@@ -216,8 +216,17 @@ require_once __DIR__ . '/../includes/header.php';
         <h2 class="card-title">Operations pulse</h2>
         <p class="admin-card-copy">A compact summary of the numbers that usually matter most during daily admin checks.</p>
       </div>
+      <button
+        type="button"
+        class="btn btn-outline admin-ops-toggle"
+        id="adminOpsToggle"
+        aria-expanded="true"
+        aria-controls="adminOpsGrid"
+      >
+        Hide details
+      </button>
     </div>
-    <div class="admin-ops-grid">
+    <div class="admin-ops-grid" id="adminOpsGrid">
       <div class="admin-ops-metric">
         <span class="admin-ops-metric__label">Approval rate</span>
         <strong class="admin-ops-metric__value"><?= $approvalRate ?>%</strong>
@@ -304,6 +313,33 @@ const ADMIN_CO2_DATA = <?= json_encode($adminCo2Chart, JSON_UNESCAPED_SLASHES) ?
 const ADMIN_CATEGORY_DATA = <?= json_encode($categoryChart, JSON_UNESCAPED_SLASHES) ?>;
 
 document.addEventListener('DOMContentLoaded', () => {
+  const mobileQuery = window.matchMedia('(max-width: 768px)');
+  const opsCard = document.querySelector('.admin-ops-card');
+  const opsToggle = document.getElementById('adminOpsToggle');
+
+  const syncOpsState = () => {
+    if (!opsCard || !opsToggle) return;
+
+    const collapsed = mobileQuery.matches;
+    opsCard.classList.toggle('is-collapsed', collapsed);
+    opsToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    opsToggle.textContent = collapsed ? 'Show details' : 'Hide details';
+  };
+
+  if (opsCard && opsToggle) {
+    syncOpsState();
+
+    opsToggle.addEventListener('click', () => {
+      if (!mobileQuery.matches) return;
+
+      const collapsed = opsCard.classList.toggle('is-collapsed');
+      opsToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      opsToggle.textContent = collapsed ? 'Show details' : 'Hide details';
+    });
+
+    mobileQuery.addEventListener('change', syncOpsState);
+  }
+
   if (typeof Chart === 'undefined') return;
 
   const renderEmptyState = (canvasId, message) => {
