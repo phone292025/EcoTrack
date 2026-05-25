@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -154,14 +154,13 @@ $list = $pdo->query(
 )->fetchAll() ?: [];
 
 $pageTitle = 'Challenges';
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../layout/header.php';
 ?>
 
 <div class="container page-shell" style="max-width:1120px;">
   <div class="section-header">
     <div>
       <h1 class="section-header__title">Challenge management</h1>
-      <p class="section-header__text">Create, publish, update, and retire sustainability challenges from one place.</p>
     </div>
     <span class="badge badge-blue"><?= count($list) ?> challenge<?= count($list) === 1 ? '' : 's' ?></span>
   </div>
@@ -341,4 +340,4 @@ require_once __DIR__ . '/../includes/header.php';
   </div>
 </div>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../layout/footer.php'; ?>

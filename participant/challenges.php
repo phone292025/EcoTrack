@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -57,14 +57,13 @@ if ($list) {
 $challengeStats = getUserChallengeStats($uid);
 
 $pageTitle = 'Challenges';
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../layout/header.php';
 ?>
 
 <div class="container page-shell" style="max-width:960px;">
   <div class="section-header">
     <div>
       <h1 class="section-header__title">Challenges</h1>
-      <p class="section-header__text">Join active eco challenges, track whether you have completed them, and earn challenge bonus points once your matching activity is approved.</p>
     </div>
     <span class="badge badge-blue"><?= (int)($challengeStats['completed'] ?? 0) ?> completed</span>
   </div>
@@ -136,4 +135,4 @@ require_once __DIR__ . '/../includes/header.php';
   </div>
 </div>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../layout/footer.php'; ?>

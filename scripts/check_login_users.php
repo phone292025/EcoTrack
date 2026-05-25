@@ -3,7 +3,7 @@
  * CLI: php scripts/check_login_users.php
  * Verifies seeded admin/moderator rows and password hashes.
  */
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 
 $pdo = getPDO();
 $emails = ['admin@ecotrack.com', 'mod@ecotrack.com'];

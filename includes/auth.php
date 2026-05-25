@@ -30,7 +30,7 @@ function requireRole(string ...$roles): void
 
     if (!in_array($_SESSION['role'], $roles, true)) {
         http_response_code(403);
-        include __DIR__ . '/403.php';   // simple "Access Denied" page
+        include __DIR__ . '/../layout/403.php';   // simple "Access Denied" page
         exit;
     }
 }
@@ -128,4 +128,3 @@ function redirectByRole(): void
     header('Location: ' . $dest);
     exit;
 }
-

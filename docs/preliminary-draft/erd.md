@@ -1,6 +1,6 @@
 # EcoTrack Entity Relationship Diagram
 
-The diagram below reflects the current database structure defined in `ecotrack.sql`.
+The diagram below reflects the current database structure defined in `database/ecotrack.sql`.
 
 ```mermaid
 erDiagram

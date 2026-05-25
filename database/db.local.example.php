@@ -1,6 +1,6 @@
 <?php
 /**
- * Copy this file to: includes/db.local.php
+ * Copy this file to: database/db.local.php
  * That file is optional and is not required if MySQL matches the defaults below.
  *
  * Use it on another PC when root has a password, or MySQL is not on localhost.

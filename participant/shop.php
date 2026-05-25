@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -102,7 +102,7 @@ $redemptionStmt->execute([$uid]);
 $redemptions = $redemptionStmt->fetchAll() ?: [];
 
 $pageTitle = 'Green Shop';
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../layout/header.php';
 ?>
 
 <div class="container page-shell shop-page" style="max-width:1140px;">
@@ -110,7 +110,6 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="shop-hero__row">
       <div>
         <h1 class="shop-hero__title">Green Shop</h1>
-        <p class="shop-hero__text">Browse eco rewards by category, search for specific items, and redeem your points for useful sustainable rewards.</p>
       </div>
       <div class="shop-hero__balance">
         <div class="shop-hero__balance-label">Your balance</div>
@@ -245,4 +244,4 @@ require_once __DIR__ . '/../includes/header.php';
   </div>
 </div>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../layout/footer.php'; ?>

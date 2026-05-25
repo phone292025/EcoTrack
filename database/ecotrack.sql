@@ -1,7 +1,7 @@
 -- ============================================================
 -- EcoTrack Database Schema
 -- Import with:
---   mysql -u root < ecotrack.sql
+--   mysql -u root < database/ecotrack.sql
 -- ============================================================
 
 CREATE DATABASE IF NOT EXISTS ecotrack

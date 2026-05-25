@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -22,14 +22,13 @@ foreach ($history as $row) {
 }
 
 $pageTitle = 'Points';
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../layout/header.php';
 ?>
 
 <div class="container page-shell">
   <div class="section-header">
     <div>
       <h1 class="section-header__title">Points dashboard</h1>
-      <p class="section-header__text">Track your current balance, review your full points ledger, and see which activity categories are driving your progress.</p>
     </div>
     <span class="badge badge-blue"><?= (int)($user['points'] ?? 0) ?> pts</span>
   </div>
@@ -58,7 +57,6 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="card-header-row">
           <div class="card-header-row__content">
             <h2 class="card-title">Points history</h2>
-            <p class="card-header-row__text">Your latest transactions from activity approvals, daily check-ins, bonuses, and reward redemptions.</p>
           </div>
         </div>
 
@@ -95,14 +93,6 @@ require_once __DIR__ . '/../includes/header.php';
           </div>
         <?php endif; ?>
       </div>
-
-      <div class="card points-note-card">
-        <h2 class="card-title">Quick note</h2>
-        <div class="points-note-card__body">
-          <p class="card-copy">Positive values mean points earned. Negative values mean points spent in the Green Shop or other deductions.</p>
-          <p class="meta-copy">If your balance changes after moderation review, the approved activity or challenge reward will appear here automatically.</p>
-        </div>
-      </div>
     </div>
 
     <aside class="points-layout__side">
@@ -110,7 +100,6 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="card-header-row">
           <div class="card-header-row__content">
             <h2 class="card-title">Category breakdown</h2>
-            <p class="card-header-row__text">See which eco activity categories are contributing the most points to your progress.</p>
           </div>
         </div>
         <div class="chart-container points-chart-container">
@@ -126,4 +115,4 @@ const CATEGORY_DATA = <?= json_encode($categoryData, JSON_UNESCAPED_SLASHES) ?>;
 </script>
 <script src="<?= BASE_URL ?>/assets/js/charts.js"></script>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../layout/footer.php'; ?>

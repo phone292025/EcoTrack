@@ -1,4 +1,4 @@
-<?php require_once __DIR__ . '/paths.php'; ?>
+<?php require_once __DIR__ . '/../includes/paths.php'; ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>

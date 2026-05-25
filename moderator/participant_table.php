@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -94,14 +94,13 @@ $resolveLastActivity = static function (array $participant): ?string {
 };
 
 $pageTitle = 'Participants';
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../layout/header.php';
 ?>
 
 <div class="container page-shell admin-analytics-shell admin-participant-shell">
   <div class="section-header admin-analytics-header">
     <div>
       <h1 class="section-header__title">Participant table</h1>
-      <p class="section-header__text">A read-only moderator view of participant accounts, with points, approved activity logs, badges, streaks, and latest activity all in one place.</p>
     </div>
     <span class="badge badge-blue"><?= count($participants) ?> shown</span>
   </div>
@@ -136,7 +135,6 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="admin-card-header admin-participant-toolbar">
       <div>
         <h2 class="card-title">Full participant list</h2>
-        <p class="admin-card-copy">Search by username or email to quickly review participant momentum before moderating logs or checking challenge progress.</p>
       </div>
       <div class="admin-participant-toolbar__actions">
         <form method="GET" class="admin-participant-search">
@@ -195,4 +193,4 @@ require_once __DIR__ . '/../includes/header.php';
   </section>
 </div>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../layout/footer.php'; ?>

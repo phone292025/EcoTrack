@@ -37,7 +37,7 @@ The project solves the problem of tracking sustainability participation in a str
 - Green Shop reward redemption with stock and point deduction
 - Badge gallery and profile impact summary
 - Responsive custom CSS layout for desktop and mobile
-- Database schema and seed data included in `ecotrack.sql`
+- Database schema and seed data included in `database/ecotrack.sql`
 
 ## Technologies Used
 
@@ -80,13 +80,13 @@ MySQL
 If MySQL root has no password:
 
 ```powershell
-C:\xampp\mysql\bin\mysql -u root < .\ecotrack.sql
+C:\xampp\mysql\bin\mysql -u root < .\database\ecotrack.sql
 ```
 
 If MySQL root has a password:
 
 ```powershell
-C:\xampp\mysql\bin\mysql -u root -p < .\ecotrack.sql
+C:\xampp\mysql\bin\mysql -u root -p < .\database\ecotrack.sql
 ```
 
 ### 5. Configure Local Database Settings
@@ -94,13 +94,13 @@ C:\xampp\mysql\bin\mysql -u root -p < .\ecotrack.sql
 The project includes an example local config file:
 
 ```powershell
-Copy-Item .\includes\db.local.example.php .\includes\db.local.php
+Copy-Item .\database\db.local.example.php .\database\db.local.php
 ```
 
 Then edit it if your database name, username, password, or host is different:
 
 ```powershell
-notepad .\includes\db.local.php
+notepad .\database\db.local.php
 ```
 
 By default, the project uses the database name:

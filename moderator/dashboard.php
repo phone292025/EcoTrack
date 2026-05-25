@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -34,16 +34,6 @@ $latestTip = $pdo->query(
      LIMIT 1'
 )->fetch() ?: null;
 
-$queueSummary = $pending > 0
-    ? $pending . ' submission' . ($pending === 1 ? '' : 's') . ' waiting for review.'
-    : 'Your review queue is clear right now.';
-$challengeSummary = $activeChallenges > 0
-    ? $activeChallenges . ' live challenge' . ($activeChallenges === 1 ? '' : 's') . ' currently visible to users.'
-    : 'No live challenges yet. Publish one to spark activity.';
-$tipsSummary = $totalTips > 0
-    ? $totalTips . ' eco tip' . ($totalTips === 1 ? '' : 's') . ' available in the library.'
-    : 'No eco tips published yet.';
-
 $latestChallengeNote = 'No challenge published yet.';
 if ($latestChallenge) {
     if (!empty($latestChallenge['end_date'])) {
@@ -53,12 +43,8 @@ if ($latestChallenge) {
     }
 }
 
-$latestTipNote = $latestTip
-    ? 'Last published ' . date('M j, Y', strtotime((string)$latestTip['created_at'])) . '.'
-    : 'Share a short sustainability tip to start the library.';
-
 $pageTitle = 'Moderator';
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../layout/header.php';
 ?>
 
 <div class="container page-shell moderator-dashboard-shell">
@@ -66,12 +52,6 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="moderator-dashboard-hero__content">
       <p class="moderator-dashboard-hero__eyebrow">Moderator workspace</p>
       <h1 class="moderator-dashboard-hero__title">Moderator dashboard</h1>
-      <p class="moderator-dashboard-hero__text">Review submissions, launch challenges, and publish eco guidance from one polished control room built for fast moderation.</p>
-      <div class="moderator-dashboard-hero__actions">
-        <a class="btn btn-primary" href="<?= BASE_URL ?>/moderator/review_submissions.php">Open review queue</a>
-        <a class="btn btn-outline" href="<?= BASE_URL ?>/moderator/create_challenge.php">Create challenge</a>
-        <a class="btn btn-outline" href="<?= BASE_URL ?>/moderator/eco_tips.php">Manage eco tips</a>
-      </div>
     </div>
 
     <div class="moderator-dashboard-hero__aside">
@@ -99,25 +79,21 @@ require_once __DIR__ . '/../includes/header.php';
       <span class="moderator-dashboard-kpi__label">Review queue</span>
       <span class="stat-widget__value"><?= $pending ?></span>
       <span class="stat-widget__label">Pending submissions</span>
-      <p class="moderator-dashboard-kpi__copy"><?= sanitise($queueSummary) ?></p>
     </div>
     <div class="stat-widget moderator-dashboard-kpi">
       <span class="moderator-dashboard-kpi__label">Challenge coverage</span>
       <span class="stat-widget__value"><?= $activeChallenges ?></span>
       <span class="stat-widget__label">Live challenges</span>
-      <p class="moderator-dashboard-kpi__copy"><?= sanitise($challengeSummary) ?></p>
     </div>
     <div class="stat-widget moderator-dashboard-kpi">
       <span class="moderator-dashboard-kpi__label">Tip library</span>
       <span class="stat-widget__value"><?= $totalTips ?></span>
       <span class="stat-widget__label">Published eco tips</span>
-      <p class="moderator-dashboard-kpi__copy"><?= sanitise($tipsSummary) ?></p>
     </div>
     <div class="stat-widget moderator-dashboard-kpi">
       <span class="moderator-dashboard-kpi__label">Next 7 days</span>
       <span class="stat-widget__value"><?= $endingSoon ?></span>
       <span class="stat-widget__label">Challenges ending soon</span>
-      <p class="moderator-dashboard-kpi__copy"><?= $tipsThisWeek ?> new eco tip<?= $tipsThisWeek === 1 ? '' : 's' ?> this week.</p>
     </div>
   </div>
 
@@ -125,7 +101,6 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="card-header-row moderator-dashboard-panel__header">
       <div class="card-header-row__content">
         <h2 class="card-title">Publishing pulse</h2>
-        <p class="card-header-row__text">Keep an eye on what is live now, what is ending soon, and whether the eco tips library needs fresh content.</p>
       </div>
       <div class="badge-group">
         <span class="badge badge-blue"><?= $activeChallenges ?> live</span>
@@ -152,7 +127,6 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="moderator-spotlight__card">
           <span class="moderator-spotlight__eyebrow">Eco tips library</span>
           <h3><?= sanitise($latestTip['title'] ?? 'Publish your first eco tip') ?></h3>
-          <p><?= sanitise($latestTipNote) ?></p>
           <div class="moderator-spotlight__meta">
             <span><?= $tipsThisWeek ?> this week</span>
             <span><?= $totalTips ?> total tips</span>
@@ -162,7 +136,6 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="moderator-spotlight__card">
           <span class="moderator-spotlight__eyebrow">Moderator focus</span>
           <h3><?= sanitise($pending > 0 ? 'Review queue needs attention' : 'Publishing time is open') ?></h3>
-          <p><?= sanitise($pending > 0 ? 'Clear the waiting submissions first, then return to challenges and eco tips.' : 'The queue is clear, so this is a strong moment to refresh a challenge or add a new tip.') ?></p>
           <div class="moderator-spotlight__meta">
             <span><?= $pending ?> pending</span>
             <span><?= $flagged ?> flagged</span>
@@ -173,4 +146,4 @@ require_once __DIR__ . '/../includes/header.php';
   </section>
 </div>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../layout/footer.php'; ?>

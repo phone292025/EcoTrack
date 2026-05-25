@@ -1,13 +1,13 @@
 <?php
 /**
  * EcoTrack — Database Connection (PDO Singleton)
- * File: includes/db.php
+ * File: database/db.php
  *
  * Usage:  $pdo = getPDO();
  *
  * Another laptop:
- *   • Import ecotrack.sql into MySQL/MariaDB.
- *   • Optional: copy includes/db.local.example.php → db.local.php and set DB_PASS / DB_HOST.
+ *   • Import database/ecotrack.sql into MySQL/MariaDB.
+ *   • Optional: copy database/db.local.example.php → db.local.php and set DB_PASS / DB_HOST.
  *   • Or set env vars: ECOTRACK_DB_HOST, ECOTRACK_DB_NAME, ECOTRACK_DB_USER, ECOTRACK_DB_PASS.
  */
 if (is_file(__DIR__ . '/db.local.php')) {

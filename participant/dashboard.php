@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -66,7 +66,7 @@ $announcements = getRecentAnnouncements(3);
 $tips = getRecentEcoTips(3);
 
 $pageTitle = 'Dashboard';
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../layout/header.php';
 ?>
 
 <div class="container page-shell participant-dashboard-shell">
@@ -74,7 +74,6 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="participant-dashboard-hero__content">
       <p class="participant-dashboard-hero__eyebrow">Participant dashboard</p>
       <h1 class="participant-dashboard-hero__title">Welcome back, <?= sanitise($user['username'] ?? '') ?></h1>
-      <p class="participant-dashboard-hero__text">Keep your eco momentum going with your daily check-in, goal tracking, and the latest platform updates.</p>
     </div>
     <div class="participant-dashboard-hero__badges">
       <span class="badge badge-green"><?= (int)($user['streak'] ?? 0) ?> day streak</span>
@@ -124,7 +123,6 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="card-header-row">
           <div class="card-header-row__content">
             <h2 class="card-title participant-dashboard-card-title">Goal setting</h2>
-            <p class="card-header-row__text">Set a weekly or monthly points target and track progress live.</p>
           </div>
           <?php if (!empty($goal)): ?>
             <span class="badge badge-blue"><?= sanitise($goal['period']) ?></span>
@@ -169,7 +167,6 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="card-header-row">
           <div class="card-header-row__content">
             <h2 class="card-title participant-dashboard-card-title">Recent activity</h2>
-            <p class="card-header-row__text">Your latest approved, pending, or rejected submissions.</p>
           </div>
           <a href="<?= BASE_URL ?>/participant/profile.php" class="btn btn-sm btn-outline participant-dashboard-secondary-link">Open profile</a>
         </div>
@@ -304,4 +301,4 @@ require_once __DIR__ . '/../includes/header.php';
   <script src="<?= BASE_URL ?>/assets/js/charts.js"></script>
 <?php endif; ?>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../layout/footer.php'; ?>

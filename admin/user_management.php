@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -224,14 +224,13 @@ $roleFilters = [
 $activeFilterLabel = $roleFilters[$filterRole]['label'] ?? 'All roles';
 
 $pageTitle = 'Users';
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../layout/header.php';
 ?>
 
 <div class="container page-shell admin-user-management-shell">
   <div class="section-header admin-user-management-header">
     <div>
       <h1 class="section-header__title">User management</h1>
-      <p class="section-header__text">Create accounts quickly, then manage the growing directory with search, role filters, and compact edit panels instead of one long stacked form per user.</p>
     </div>
     <span class="badge badge-blue"><?= $totalUsers ?> user<?= $totalUsers === 1 ? '' : 's' ?></span>
   </div>
@@ -267,7 +266,6 @@ require_once __DIR__ . '/../includes/header.php';
       <div class="admin-user-create-card__header">
         <div>
           <h2 class="card-title">Create user</h2>
-          <p class="admin-card-copy">Add new participants, moderators, or another admin without leaving this page.</p>
         </div>
         <span class="inline-pill-note">Fast add</span>
       </div>
@@ -342,9 +340,7 @@ require_once __DIR__ . '/../includes/header.php';
       </form>
 
       <div class="admin-user-results-bar">
-        <span class="inline-pill-note">Showing <?= $resultsFrom ?>-<?= $resultsTo ?> of <?= $filteredUsers ?></span>
         <span class="inline-pill-note">View: <?= sanitise($activeFilterLabel) ?></span>
-        <span class="admin-user-results-bar__hint">Open a row only when you need to edit it.</span>
       </div>
 
       <?php if (empty($users)): ?>
@@ -453,4 +449,4 @@ require_once __DIR__ . '/../includes/header.php';
   </div>
 </div>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../layout/footer.php'; ?>

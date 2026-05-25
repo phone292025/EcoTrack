@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -13,7 +13,6 @@ $rewardForm = [
     'category' => 'Lifestyle',
     'point_cost' => '50',
     'stock' => '0',
-    'image' => '',
     'active' => '1',
 ];
 $err = '';
@@ -30,7 +29,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'category' => $_POST['category'] ?? 'Lifestyle',
             'point_cost' => (string)((int)($_POST['point_cost'] ?? 50)),
             'stock' => (string)((int)($_POST['stock'] ?? 0)),
-            'image' => trim($_POST['image'] ?? ''),
             'active' => isset($_POST['active']) ? '1' : '0',
         ];
 
@@ -39,7 +37,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $category = $rewardForm['category'];
         $pointCost = (int)$rewardForm['point_cost'];
         $stock = (int)$rewardForm['stock'];
-        $image = $rewardForm['image'];
         $active = $rewardForm['active'] === '1' ? 1 : 0;
 
         if (strlen($name) < 3) {
@@ -53,8 +50,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $pdo->prepare(
                 'INSERT INTO rewards (name, description, image, category, point_cost, stock, active)
-                 VALUES (?, ?, NULLIF(?, ""), ?, ?, ?, ?)'
-            )->execute([$name, $description, $image, $category, $pointCost, $stock, $active]);
+                 VALUES (?, ?, NULL, ?, ?, ?, ?)'
+            )->execute([$name, $description, $category, $pointCost, $stock, $active]);
 
             $ok = 'Reward added to the catalogue.';
             $rewardForm = [
@@ -63,7 +60,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'category' => 'Lifestyle',
                 'point_cost' => '50',
                 'stock' => '0',
-                'image' => '',
                 'active' => '1',
             ];
         }
@@ -74,7 +70,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $category = $_POST['category'] ?? 'Lifestyle';
         $pointCost = (int)($_POST['point_cost'] ?? 50);
         $stock = (int)($_POST['stock'] ?? 0);
-        $image = trim($_POST['image'] ?? '');
         $active = isset($_POST['active']) ? 1 : 0;
 
         if ($rewardId <= 0) {
@@ -90,9 +85,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $pdo->prepare(
                 'UPDATE rewards
-                 SET name = ?, description = ?, image = NULLIF(?, ""), category = ?, point_cost = ?, stock = ?, active = ?
+                 SET name = ?, description = ?, image = NULL, category = ?, point_cost = ?, stock = ?, active = ?
                  WHERE reward_id = ?'
-            )->execute([$name, $description, $image, $category, $pointCost, $stock, $active, $rewardId]);
+            )->execute([$name, $description, $category, $pointCost, $stock, $active, $rewardId]);
 
             $ok = 'Reward updated successfully.';
         }
@@ -158,14 +153,13 @@ $buildRewardsManagementUrl = static function (array $overrides = []) use ($editi
 };
 
 $pageTitle = 'Rewards';
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../layout/header.php';
 ?>
 
 <div class="container page-shell reward-admin-shell">
   <div class="section-header reward-admin-header">
     <div>
       <h1 class="section-header__title">Rewards management</h1>
-      <p class="section-header__text">Manage the Green Shop catalogue with a cleaner admin layout that is easier to read, wireframe, and maintain at normal browser zoom.</p>
     </div>
     <span class="badge badge-blue"><?= $rewardCount ?> reward<?= $rewardCount === 1 ? '' : 's' ?></span>
   </div>
@@ -197,7 +191,6 @@ require_once __DIR__ . '/../includes/header.php';
       <div class="reward-admin-panel__intro reward-admin-panel__intro--compact">
         <span class="badge badge-blue">New reward</span>
         <h2 class="card-title">Create a catalogue item</h2>
-        <p class="reward-admin-panel__text">Add a new reward quickly, then manage the catalogue table below for edits, stock updates, and visibility changes.</p>
         <div class="reward-admin-panel__meta">
           <span class="inline-pill-note"><?= $activeCount ?> live</span>
           <span class="inline-pill-note"><?= $hiddenCount ?> hidden</span>
@@ -238,10 +231,6 @@ require_once __DIR__ . '/../includes/header.php';
             <textarea id="create_description" name="description" rows="3" placeholder="Short benefit-focused copy for the reward card."><?= sanitise($rewardForm['description']) ?></textarea>
           </div>
 
-          <div class="form-group reward-admin-form-group">
-            <label for="create_image">Image URL or path</label>
-            <input type="text" id="create_image" name="image" value="<?= sanitise($rewardForm['image']) ?>" placeholder="Optional">
-          </div>
         </div>
 
         <div class="reward-admin-form-actions">
@@ -369,10 +358,6 @@ require_once __DIR__ . '/../includes/header.php';
                               <textarea id="edit_description_<?= (int)$reward['reward_id'] ?>" name="description" rows="3"><?= sanitise($reward['description'] ?? '') ?></textarea>
                             </div>
 
-                            <div class="form-group reward-admin-form-group">
-                              <label for="edit_image_<?= (int)$reward['reward_id'] ?>">Image URL or path</label>
-                              <input type="text" id="edit_image_<?= (int)$reward['reward_id'] ?>" name="image" value="<?= sanitise($reward['image'] ?? '') ?>" placeholder="Optional">
-                            </div>
                           </div>
 
                           <div class="reward-admin-form-actions">
@@ -396,4 +381,4 @@ require_once __DIR__ . '/../includes/header.php';
   </section>
 </div>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../layout/footer.php'; ?>

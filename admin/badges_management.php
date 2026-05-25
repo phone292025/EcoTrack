@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -10,7 +10,6 @@ $badgeForm = [
     'name' => '',
     'description' => '',
     'criteria' => '',
-    'icon' => '',
 ];
 $err = '';
 $ok = '';
@@ -24,7 +23,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'name' => trim($_POST['name'] ?? ''),
             'description' => trim($_POST['description'] ?? ''),
             'criteria' => trim($_POST['criteria'] ?? ''),
-            'icon' => trim($_POST['icon'] ?? ''),
         ];
 
         if (strlen($badgeForm['name']) < 2) {
@@ -32,11 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $pdo->prepare(
                 'INSERT INTO badges (name, description, icon, criteria, created_by)
-                 VALUES (?, ?, NULLIF(?, ""), NULLIF(?, ""), ?)'
+                 VALUES (?, ?, NULL, NULLIF(?, ""), ?)'
             )->execute([
                 $badgeForm['name'],
                 $badgeForm['description'],
-                $badgeForm['icon'],
                 $badgeForm['criteria'],
                 currentUserId(),
             ]);
@@ -46,7 +43,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'name' => '',
                 'description' => '',
                 'criteria' => '',
-                'icon' => '',
             ];
         }
     } elseif ($action === 'update') {
@@ -54,7 +50,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = trim($_POST['name'] ?? '');
         $description = trim($_POST['description'] ?? '');
         $criteria = trim($_POST['criteria'] ?? '');
-        $icon = trim($_POST['icon'] ?? '');
 
         if ($badgeId <= 0) {
             $err = 'Invalid badge selected.';
@@ -63,9 +58,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $pdo->prepare(
                 'UPDATE badges
-                 SET name = ?, description = ?, icon = NULLIF(?, ""), criteria = NULLIF(?, "")
+                 SET name = ?, description = ?, criteria = NULLIF(?, "")
                  WHERE badge_id = ?'
-            )->execute([$name, $description, $icon, $criteria, $badgeId]);
+            )->execute([$name, $description, $criteria, $badgeId]);
             $ok = 'Badge updated.';
         }
     } elseif ($action === 'delete') {
@@ -88,21 +83,15 @@ $badges = $pdo->query(
 
 $badgeCount = count($badges);
 $ruleCount = 0;
-$iconCount = 0;
 $manualCount = 0;
 
 foreach ($badges as $badge) {
     $hasCriteria = trim((string)($badge['criteria'] ?? '')) !== '';
-    $hasIcon = trim((string)($badge['icon'] ?? '')) !== '';
 
     if ($hasCriteria) {
         $ruleCount++;
     } else {
         $manualCount++;
-    }
-
-    if ($hasIcon) {
-        $iconCount++;
     }
 }
 
@@ -133,14 +122,13 @@ $buildBadgesManagementUrl = static function (array $overrides = []) use ($editin
 };
 
 $pageTitle = 'Badges';
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../layout/header.php';
 ?>
 
 <div class="container page-shell reward-admin-shell badge-admin-shell">
   <div class="section-header reward-admin-header">
     <div>
       <h1 class="section-header__title">Badge management</h1>
-      <p class="section-header__text">Create and tune achievement badges with milestone criteria that the badge engine can award automatically.</p>
     </div>
     <span class="badge badge-blue"><?= $badgeCount ?> badge<?= $badgeCount === 1 ? '' : 's' ?></span>
   </div>
@@ -158,10 +146,6 @@ require_once __DIR__ . '/../includes/header.php';
       <span class="reward-summary-card__label">Manual badges</span>
       <strong class="reward-summary-card__value"><?= $manualCount ?></strong>
     </article>
-    <article class="card reward-summary-card">
-      <span class="reward-summary-card__label">With icon</span>
-      <strong class="reward-summary-card__value"><?= $iconCount ?></strong>
-    </article>
   </section>
 
   <?php if ($err): ?><div class="flash-message flash-error" role="alert"><?= sanitise($err) ?></div><?php endif; ?>
@@ -172,7 +156,6 @@ require_once __DIR__ . '/../includes/header.php';
       <div class="reward-admin-panel__intro reward-admin-panel__intro--compact">
         <span class="badge badge-blue">New badge</span>
         <h2 class="card-title">Create a badge rule</h2>
-        <p class="reward-admin-panel__text">Set the badge name, rule, and optional icon in one place, then manage the full badge library below.</p>
         <div class="reward-admin-panel__meta">
           <span class="inline-pill-note"><?= $ruleCount ?> auto</span>
           <span class="inline-pill-note"><?= $manualCount ?> manual</span>
@@ -192,11 +175,6 @@ require_once __DIR__ . '/../includes/header.php';
           <div class="form-group reward-admin-form-group">
             <label for="create_badge_criteria">Criteria</label>
             <input type="text" id="create_badge_criteria" name="criteria" value="<?= sanitise($badgeForm['criteria']) ?>" placeholder="points>=100">
-          </div>
-
-          <div class="form-group reward-admin-form-group">
-            <label for="create_badge_icon">Icon path or filename</label>
-            <input type="text" id="create_badge_icon" name="icon" value="<?= sanitise($badgeForm['icon']) ?>" placeholder="badge_100pts.svg">
           </div>
 
           <div class="form-group reward-admin-form-group reward-admin-form-group--description">
@@ -234,7 +212,6 @@ require_once __DIR__ . '/../includes/header.php';
                 <th>ID</th>
                 <th>Badge</th>
                 <th>Criteria</th>
-                <th>Icon</th>
                 <th>Created by</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -244,7 +221,6 @@ require_once __DIR__ . '/../includes/header.php';
               <?php foreach ($badges as $badge): ?>
                 <?php
                 $criteria = trim((string)($badge['criteria'] ?? ''));
-                $icon = trim((string)($badge['icon'] ?? ''));
                 $isAutomatic = $criteria !== '';
                 ?>
                 <tr id="badge-<?= (int)$badge['badge_id'] ?>" class="reward-admin-table__row badge-admin-table__row<?= $editingBadgeId === (int)$badge['badge_id'] ? ' reward-admin-table__row--editing' : '' ?>">
@@ -254,7 +230,6 @@ require_once __DIR__ . '/../includes/header.php';
                     <span><?= sanitise($badge['description'] ?: 'No description yet.') ?></span>
                   </td>
                   <td class="reward-admin-table__cell badge-admin-table__cell badge-admin-table__cell--criteria" data-label="Criteria"><?= sanitise($criteria !== '' ? $criteria : 'Manual award or custom trigger') ?></td>
-                  <td class="reward-admin-table__cell badge-admin-table__cell badge-admin-table__cell--icon" data-label="Icon"><?= sanitise($icon !== '' ? $icon : 'No icon yet') ?></td>
                   <td class="reward-admin-table__cell badge-admin-table__cell badge-admin-table__cell--created" data-label="Created by"><?= sanitise($badge['created_by_name'] ?? 'System') ?></td>
                   <td class="reward-admin-table__cell reward-admin-table__cell--status" data-label="Status">
                     <span class="badge <?= $isAutomatic ? 'badge-green' : 'badge-grey' ?>">
@@ -277,7 +252,7 @@ require_once __DIR__ . '/../includes/header.php';
                 </tr>
                 <?php if ($editingBadgeId === (int)$badge['badge_id']): ?>
                   <tr class="reward-admin-edit-row">
-                    <td class="reward-admin-edit-row__cell" colspan="7">
+                    <td class="reward-admin-edit-row__cell" colspan="6">
                       <section class="reward-admin-edit-panel">
                         <div class="reward-admin-edit-row__header">
                           <div>
@@ -301,11 +276,6 @@ require_once __DIR__ . '/../includes/header.php';
                             <div class="form-group reward-admin-form-group">
                               <label for="edit_badge_criteria_<?= (int)$badge['badge_id'] ?>">Criteria</label>
                               <input type="text" id="edit_badge_criteria_<?= (int)$badge['badge_id'] ?>" name="criteria" value="<?= sanitise($badge['criteria'] ?? '') ?>">
-                            </div>
-
-                            <div class="form-group reward-admin-form-group">
-                              <label for="edit_badge_icon_<?= (int)$badge['badge_id'] ?>">Icon path or filename</label>
-                              <input type="text" id="edit_badge_icon_<?= (int)$badge['badge_id'] ?>" name="icon" value="<?= sanitise($badge['icon'] ?? '') ?>">
                             </div>
 
                             <div class="form-group reward-admin-form-group reward-admin-form-group--description">
@@ -332,4 +302,4 @@ require_once __DIR__ . '/../includes/header.php';
   </section>
 </div>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../layout/footer.php'; ?>

@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -18,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($logId <= 0) {
         $err = 'Invalid submission selected.';
-    } elseif (!in_array($action, ['approve', 'reject', 'flag'], true)) {
+    } elseif (!in_array($action, ['approve', 'reject', 'flag'], true) || ($isAdmin && $action === 'flag')) {
         $err = 'Invalid moderation action.';
     } else {
         $pdo->beginTransaction();
@@ -100,16 +100,13 @@ if ($isAdmin) {
 }
 
 $pageTitle = 'Review submissions';
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../layout/header.php';
 ?>
 
 <div class="container page-shell review-page" style="max-width:1080px;">
   <div class="section-header">
     <div>
       <h1 class="section-header__title">Submission review</h1>
-      <?php if (!$isAdmin): ?>
-        <p class="section-header__text">Moderators can approve, reject, or flag pending activity logs. Admins can also resolve the flagged queue.</p>
-      <?php endif; ?>
     </div>
     <div class="badge-group">
       <span class="badge badge-amber"><?= count($pending) ?> pending</span>
@@ -149,7 +146,9 @@ require_once __DIR__ . '/../includes/header.php';
               <input type="hidden" name="log_id" value="<?= (int)$row['log_id'] ?>">
               <button type="submit" name="submission_action" value="approve" class="btn btn-primary btn-sm">Approve</button>
               <button type="submit" name="submission_action" value="reject" class="btn btn-outline btn-sm">Reject</button>
-              <button type="submit" name="submission_action" value="flag" class="btn btn-danger btn-sm">Flag for admin</button>
+              <?php if (!$isAdmin): ?>
+                <button type="submit" name="submission_action" value="flag" class="btn btn-danger btn-sm">Flag for admin</button>
+              <?php endif; ?>
             </form>
           </div>
         <?php endforeach; ?>
@@ -192,4 +191,4 @@ require_once __DIR__ . '/../includes/header.php';
   </div>
 </div>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../layout/footer.php'; ?>

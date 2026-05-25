@@ -1,9 +1,9 @@
 <?php
 /**
  * EcoTrack — Shared Page Footer
- * File: includes/footer.php
+ * File: layout/footer.php
  */
-require_once __DIR__ . '/paths.php';
+require_once __DIR__ . '/../includes/paths.php';
 ?>
 </main><!-- /#mainContent -->
 

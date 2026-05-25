@@ -1,12 +1,12 @@
 <?php
 /**
  * EcoTrack — Shared Page Header
- * File: includes/header.php
+ * File: layout/header.php
  *
  * Variables expected before include:
  *   $pageTitle  (string)  — shown in <title> and page heading area
  */
-require_once __DIR__ . '/paths.php';
+require_once __DIR__ . '/../includes/paths.php';
 $pageTitle = $pageTitle ?? 'EcoTrack';
 $role      = $_SESSION['role'] ?? 'guest';
 ?>

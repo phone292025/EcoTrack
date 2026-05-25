@@ -3,7 +3,7 @@
  * EcoTrack — Registration Page
  * File: register.php
  */
-require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/database/db.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/paths.php';

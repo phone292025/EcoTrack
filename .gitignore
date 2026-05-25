@@ -1,5 +1,5 @@
 # Local machine configuration
-includes/db.local.php
+database/db.local.php
 
 # Uploaded user evidence files
 uploads/evidence/*

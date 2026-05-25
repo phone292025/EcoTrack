@@ -1,22 +1,36 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
 requireRole('admin');
 
 $pdo = getPDO();
+$err = '';
 $ok = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
-    $title = trim($_POST['ann_title'] ?? '');
-    $body = trim($_POST['ann_body'] ?? '');
-    if (strlen($title) >= 2) {
-        $pdo->prepare(
-            'INSERT INTO announcements (title, body, created_by) VALUES (?, ?, ?)'
-        )->execute([$title, $body, currentUserId()]);
-        $ok = 'Announcement posted.';
+    $action = $_POST['post_action'] ?? 'create';
+
+    if ($action === 'delete') {
+        $annId = (int)($_POST['ann_id'] ?? 0);
+        if ($annId <= 0) {
+            $err = 'Invalid announcement selected.';
+        } else {
+            $stmt = $pdo->prepare('DELETE FROM announcements WHERE ann_id = ?');
+            $stmt->execute([$annId]);
+            $ok = $stmt->rowCount() > 0 ? 'Announcement deleted.' : 'Announcement not found.';
+        }
+    } else {
+        $title = trim($_POST['ann_title'] ?? '');
+        $body = trim($_POST['ann_body'] ?? '');
+        if (strlen($title) >= 2) {
+            $pdo->prepare(
+                'INSERT INTO announcements (title, body, created_by) VALUES (?, ?, ?)'
+            )->execute([$title, $body, currentUserId()]);
+            $ok = 'Announcement posted.';
+        }
     }
 }
 
@@ -25,24 +39,25 @@ $list = $pdo->query(
 )->fetchAll() ?: [];
 
 $pageTitle = 'Announcements';
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../layout/header.php';
 ?>
 
 <div class="container page-shell" style="max-width:720px;">
   <div class="section-header">
     <div>
       <h1 class="section-header__title">Announcements</h1>
-      <p class="section-header__text">Publish important platform updates that all users can see on their dashboards.</p>
     </div>
     <span class="badge badge-blue"><?= count($list) ?> post<?= count($list) === 1 ? '' : 's' ?></span>
   </div>
 
+  <?php if ($err): ?><div class="flash-message flash-error" role="alert"><?= sanitise($err) ?></div><?php endif; ?>
   <?php if ($ok): ?><div class="flash-message flash-success"><?= sanitise($ok) ?></div><?php endif; ?>
 
   <div class="card" style="margin-bottom:var(--space-4);">
     <h2 class="card-title">New announcement</h2>
     <form method="POST">
       <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">
+      <input type="hidden" name="post_action" value="create">
       <div class="form-group">
         <label for="ann_title">Title</label>
         <input type="text" id="ann_title" name="ann_title" maxlength="200" required>
@@ -67,6 +82,12 @@ require_once __DIR__ . '/../includes/header.php';
             <?php if (!empty($a['body'])): ?>
               <p style="margin:var(--space-2) 0 0;"><?= nl2br(sanitise($a['body'])) ?></p>
             <?php endif; ?>
+            <form method="POST" style="margin-top:var(--space-3);">
+              <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">
+              <input type="hidden" name="post_action" value="delete">
+              <input type="hidden" name="ann_id" value="<?= (int)$a['ann_id'] ?>">
+              <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this announcement?');">Delete</button>
+            </form>
           </div>
         <?php endforeach; ?>
       </div>
@@ -74,4 +95,4 @@ require_once __DIR__ . '/../includes/header.php';
   </div>
 </div>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../layout/footer.php'; ?>

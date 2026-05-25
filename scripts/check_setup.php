@@ -3,7 +3,7 @@
  * CLI: php scripts/check_setup.php
  * Quick environment check for running EcoTrack on a new laptop.
  */
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 
 $projectRoot = realpath(__DIR__ . '/..') ?: dirname(__DIR__);
 $uploadDir = $projectRoot . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'evidence';

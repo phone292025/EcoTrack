@@ -3,7 +3,7 @@
  * EcoTrack — Core Business Logic
  * File: includes/functions.php
  *
- * Requires: includes/db.php  (getPDO())
+ * Requires: database/db.php  (getPDO())
  *
  * Functions in this file:
  *   awardPoints()            — credit/debit points + log ledger
@@ -19,7 +19,7 @@
  *   jsonResponse()           — standardised AJAX JSON output
  */
 
-require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/../database/db.php';
 
 /* =============================================================
  *  OUTPUT HELPERS

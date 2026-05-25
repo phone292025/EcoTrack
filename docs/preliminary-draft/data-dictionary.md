@@ -1,6 +1,6 @@
 # EcoTrack Data Dictionary
 
-This document describes the current database tables, fields, and key relationships defined in `ecotrack.sql`.
+This document describes the current database tables, fields, and key relationships defined in `database/ecotrack.sql`.
 
 ## 1. `users`
 

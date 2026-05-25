@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -175,14 +175,13 @@ for ($i = 29; $i >= 0; $i--) {
 }
 
 $pageTitle = 'Admin';
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../layout/header.php';
 ?>
 
 <div class="container page-shell admin-analytics-shell">
   <div class="section-header admin-analytics-header">
     <div>
-      <h1 class="section-header__title">Admin analytics dashboard</h1>
-      <p class="section-header__text">A streamlined control center for platform health, sustainability impact, moderation pressure, and reward operations.</p>
+      <h1 class="section-header__title">Admin dashboard</h1>
     </div>
     <span class="badge badge-blue"><?= $participantCount ?> participant<?= $participantCount === 1 ? '' : 's' ?></span>
   </div>
@@ -214,7 +213,6 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="admin-card-header">
       <div>
         <h2 class="card-title">Operations pulse</h2>
-        <p class="admin-card-copy">A compact summary of the numbers that usually matter most during daily admin checks.</p>
       </div>
       <button
         type="button"
@@ -259,7 +257,6 @@ require_once __DIR__ . '/../includes/header.php';
       <div class="admin-card-header">
         <div>
           <h2 class="card-title">Platform carbon trend</h2>
-          <p class="admin-card-copy">Cumulative CO2 savings across the last 30 days, based on approved eco activities across the whole platform.</p>
         </div>
         <div class="admin-card-metrics">
           <span class="inline-pill-note"><?= number_format($platformCo2Kg, 2) ?> kg total</span>
@@ -275,7 +272,6 @@ require_once __DIR__ . '/../includes/header.php';
       <div class="admin-card-header">
         <div>
           <h2 class="card-title">Platform mix</h2>
-          <p class="admin-card-copy">A smaller side panel for category output and moderation health instead of another large block of sections.</p>
         </div>
       </div>
       <div class="admin-side-card__chart">
@@ -456,4 +452,4 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../layout/footer.php'; ?>

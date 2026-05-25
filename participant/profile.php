@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -16,14 +16,13 @@ $history = getUserActivityLog($uid, 1, 50);
 $challengeStats = getUserChallengeStats($uid);
 
 $pageTitle = 'Profile';
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../layout/header.php';
 ?>
 
 <div class="container page-shell profile-page">
   <div class="section-header">
     <div>
       <h1 class="section-header__title">Your profile</h1>
-      <p class="section-header__text">Review your eco performance, carbon savings, badges, and complete activity history in one responsive overview.</p>
     </div>
     <span class="badge badge-blue"><?= (int)($user['points'] ?? 0) ?> pts</span>
   </div>
@@ -77,7 +76,6 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="card-header-row profile-history-card__header">
           <div>
             <h2 class="card-title" style="margin:0;">Activity history</h2>
-            <p class="card-copy profile-history-card__copy">Your most recent eco submissions and moderation outcomes.</p>
           </div>
           <span class="inline-pill-note"><?= count($history) ?> recent</span>
         </div>
@@ -121,4 +119,4 @@ const CO2_DATA = <?= json_encode($co2Data, JSON_UNESCAPED_SLASHES) ?>;
 </script>
 <script src="<?= BASE_URL ?>/assets/js/charts.js"></script>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../layout/footer.php'; ?>

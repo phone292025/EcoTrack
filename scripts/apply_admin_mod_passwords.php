@@ -1,6 +1,6 @@
 <?php
 /** php scripts/apply_admin_mod_passwords.php */
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 $pdo = getPDO();
 $pdo->prepare(
     'UPDATE users SET password = ? WHERE email = ?'

@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../database/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -94,7 +94,7 @@ $resolveLastActivity = static function (array $participant): ?string {
 };
 
 $pageTitle = 'Participants';
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../layout/header.php';
 ?>
 
 <div class="container page-shell admin-analytics-shell admin-participant-shell">
@@ -135,7 +135,6 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="admin-card-header admin-participant-toolbar">
       <div>
         <h2 class="card-title">Full participant list</h2>
-        <p class="admin-card-copy">Search by username or email, then review who is most active and how each participant is progressing.</p>
       </div>
       <div class="admin-participant-toolbar__actions">
         <form method="GET" class="admin-participant-search">
@@ -144,7 +143,6 @@ require_once __DIR__ . '/../includes/header.php';
           <button type="submit" class="btn btn-primary">Search</button>
           <a href="<?= BASE_URL ?>/admin/participant_table.php" class="btn btn-outline">Reset</a>
         </form>
-        <a href="<?= BASE_URL ?>/admin/user_management.php" class="inline-pill-note">Open user management</a>
       </div>
     </div>
 
@@ -194,4 +192,4 @@ require_once __DIR__ . '/../includes/header.php';
   </section>
 </div>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../layout/footer.php'; ?>
