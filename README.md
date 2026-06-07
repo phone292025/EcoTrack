@@ -189,12 +189,6 @@ Third-party library:
 
 For questions about this project, contact:
 
-```text
-Phone Myat Ko
-Email: phonemyat2k16@gmail.com
-GitHub: https://github.com/phone292025
-```
-
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
