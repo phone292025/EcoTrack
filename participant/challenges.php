@@ -109,7 +109,7 @@ require_once __DIR__ . '/../layout/header.php';
                 <div class="reward-admin-card__meta">
                   <span class="reward-admin-card__chip reward-admin-card__chip--default"><?= sanitise($c['difficulty'] ?? 'easy') ?></span>
                   <span><?= (int)($c['points'] ?? 0) ?> pts</span>
-                  <span><?= $target ?> approved log<?= $target === 1 ? '' : 's' ?></span>
+                  <span><?= $target ?> log<?= $target === 1 ? '' : 's' ?> needed</span>
                   <?php if (!empty($c['cat_name'])): ?><span><?= sanitise($c['cat_name']) ?></span><?php endif; ?>
                 </div>
               </div>
@@ -124,8 +124,12 @@ require_once __DIR__ . '/../layout/header.php';
               <span class="reward-admin-card__stock">
                 <?php if ($isCompleted): ?>
                   Completed on <?= sanitise((string)$joinData['completed_at']) ?>
+                <?php elseif (!empty($c['cat_name'])): ?>
+                  Needs <?= $target ?> approved <?= sanitise($c['cat_name']) ?>
+                  <?= $target === 1 ? 'activity' : 'activities' ?>
                 <?php else: ?>
-                  Log <?= $target ?> approved <?= sanitise($needsCategory) ?><?= $target === 1 ? '' : 's' ?>
+                  Needs <?= $target ?> approved
+                  <?= $target === 1 ? 'activity' : 'activities' ?>
                 <?php endif; ?>
               </span>
               <span class="reward-admin-card__visibility">

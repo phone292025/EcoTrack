@@ -18,7 +18,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
     } elseif (!in_array($period, ['weekly', 'monthly'], true)) {
         setFlash('error', 'Please choose a valid goal period.');
     } else {
-        $startDate = new DateTimeImmutable('today');
+        // dbTodayObject() so the goal window lines up with the CURDATE()
+        // comparisons that decide whether a goal is currently active.
+        $startDate = dbTodayObject();
         $endDate = $period === 'monthly'
             ? $startDate->modify('+29 days')
             : $startDate->modify('+6 days');

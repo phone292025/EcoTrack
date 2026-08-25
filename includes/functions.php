@@ -42,6 +42,39 @@ function jsonResponse(bool $success, array $data = [], int $status = 200): never
     exit;
 }
 
+/* =============================================================
+ *  CLOCK
+ *
+ *  PHP and MySQL can sit in different time zones — PHP reads date.timezone
+ *  from php.ini while MySQL follows the OS — and near midnight that puts them
+ *  on different calendar days. Every date stored by this application comes
+ *  from MySQL (CURRENT_TIMESTAMP defaults, CURDATE() comparisons), so the
+ *  database clock is the authoritative one. Anything comparing against a
+ *  stored date must ask for "today" here rather than using PHP's own clock.
+ * ============================================================*/
+
+/**
+ * Today's date according to the database, as 'Y-m-d'. Cached per request.
+ */
+function dbToday(): string
+{
+    static $today = null;
+
+    if ($today === null) {
+        $today = (string)getPDO()->query('SELECT CURDATE()')->fetchColumn();
+    }
+
+    return $today;
+}
+
+/**
+ * Today's date according to the database, as a date object at midnight.
+ */
+function dbTodayObject(): DateTimeImmutable
+{
+    return new DateTimeImmutable(dbToday());
+}
+
 /**
  * Evenly spaced colours for however many chart slices exist, so adding a
  * category can never leave a slice uncoloured.
@@ -192,7 +225,8 @@ function recalculateStreak(int $userId): int
     $lastActive = $dates[0] ?? null;
 
     if ($lastActive !== null) {
-        $today = new DateTimeImmutable('today');
+        // dbToday(), not PHP's clock — these dates were written by MySQL.
+        $today = dbTodayObject();
         $mostRecent = new DateTimeImmutable($lastActive);
         $gap = (int)$today->diff($mostRecent)->days;
 
@@ -327,16 +361,16 @@ function checkAndAwardBadges(int $userId): void
 function getUserGoalProgress(int $userId): array
 {
     $pdo = getPDO();
-    $today = date('Y-m-d');
 
+    // CURDATE() keeps this on the same clock as the dates in the table.
     $stmt = $pdo->prepare(
         'SELECT * FROM goals
          WHERE user_id = :uid
-           AND start_date <= :today
-           AND end_date   >= :today2
+           AND start_date <= CURDATE()
+           AND end_date   >= CURDATE()
          ORDER BY goal_id DESC LIMIT 1'
     );
-    $stmt->execute([':uid' => $userId, ':today' => $today, ':today2' => $today]);
+    $stmt->execute([':uid' => $userId]);
     $goal = $stmt->fetch();
     if (!$goal) {
         return [];
@@ -357,7 +391,7 @@ function getUserGoalProgress(int $userId): array
     $earned = (int)$stmt->fetchColumn();
 
     $percent  = min(100, (int)round(($earned / max(1, (int)$goal['target'])) * 100));
-    $daysLeft = (int)(new DateTimeImmutable('today'))
+    $daysLeft = (int)dbTodayObject()
         ->diff(new DateTimeImmutable($goal['end_date']))->days;
 
     return array_merge($goal, [
@@ -665,15 +699,16 @@ function handleFileUpload(array $file, string $subdir = 'evidence'): ?string
  */
 function dailyCheckIn(int $userId): bool
 {
-    $pdo   = getPDO();
-    $today = date('Y-m-d');
+    $pdo = getPDO();
 
     $pdo->beginTransaction();
 
     try {
+        // CURDATE() rather than a PHP date, so this always agrees with
+        // hasCheckedInToday() even when PHP and MySQL differ on the day.
         $pdo->prepare(
-            'INSERT INTO daily_checkins (user_id, checkin_date) VALUES (:uid, :today)'
-        )->execute([':uid' => $userId, ':today' => $today]);
+            'INSERT INTO daily_checkins (user_id, checkin_date) VALUES (:uid, CURDATE())'
+        )->execute([':uid' => $userId]);
 
         awardPoints($userId, 5, 'Daily Check-in');
 

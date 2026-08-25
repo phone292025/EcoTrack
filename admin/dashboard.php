@@ -165,7 +165,9 @@ $adminCo2Chart = [
 ];
 
 $co2RunningTotal = 0.0;
-$today = new DateTimeImmutable('today');
+// dbTodayObject() so these labels line up with the DATE(created_at) keys
+// above, which MySQL produced on its own clock.
+$today = dbTodayObject();
 for ($i = 29; $i >= 0; $i--) {
     $date = $today->sub(new DateInterval('P' . $i . 'D'));
     $dateKey = $date->format('Y-m-d');
@@ -175,6 +177,7 @@ for ($i = 29; $i >= 0; $i--) {
 }
 
 $pageTitle = 'Admin';
+$needsCharts = true;   // this page draws the carbon trend and platform mix charts
 require_once __DIR__ . '/../layout/header.php';
 ?>
 
