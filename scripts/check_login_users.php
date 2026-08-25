@@ -13,8 +13,8 @@ require_once __DIR__ . '/../database/db.php';
 $pdo = getPDO();
 $emails = ['admin@ecotrack.com', 'mod@ecotrack.com'];
 $expect = [
-    'admin@ecotrack.com' => 'admin1234',
-    'mod@ecotrack.com' => 'mod123',
+    'admin@ecotrack.com' => 'EcoAdmin2026',
+    'mod@ecotrack.com' => 'EcoMod2026',
 ];
 
 foreach ($emails as $email) {

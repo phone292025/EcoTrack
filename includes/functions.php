@@ -915,6 +915,49 @@ function getRecentEcoTips(int $limit = 3): array
  * ============================================================*/
 
 /**
+ * SQL condition for a challenge that is genuinely open to join right now.
+ *
+ * status = 'active' on its own is not enough: a challenge whose end_date has
+ * passed is over, whether or not anyone has closed it yet. Every list that
+ * shows joinable challenges uses this, so an expired one can never be offered
+ * even before closeExpiredChallenges() has run.
+ *
+ * @param string $alias Table alias used in the query
+ */
+function liveChallengeCondition(string $alias = 'c'): string
+{
+    return sprintf(
+        '%1$s.status = "active"
+         AND (%1$s.start_date IS NULL OR %1$s.start_date <= CURDATE())
+         AND (%1$s.end_date IS NULL OR %1$s.end_date >= CURDATE())',
+        $alias
+    );
+}
+
+/**
+ * Close any active challenge whose end date has passed.
+ *
+ * A maintenance sweep, not a reward: it moves no points and touches no user
+ * row, so it is safe to run whenever an admin or moderator acts on the
+ * challenge pages. Display never depends on it having run — see
+ * liveChallengeCondition().
+ *
+ * @return int Number of challenges closed
+ */
+function closeExpiredChallenges(): int
+{
+    $stmt = getPDO()->query(
+        'UPDATE challenges
+         SET status = "closed"
+         WHERE status = "active"
+           AND end_date IS NOT NULL
+           AND end_date < CURDATE()'
+    );
+
+    return $stmt->rowCount();
+}
+
+/**
  * How many approved logs a user has that count toward a challenge.
  * Read-only, so pages can show "3 of 5 logged".
  */

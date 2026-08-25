@@ -17,6 +17,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirectTo('/participant/challenges.php');
     }
 
+    // Refuse to join something that has already ended, even if the button was
+    // rendered before it expired or the id was posted by hand.
+    $live = $pdo->prepare(
+        'SELECT COUNT(*) FROM challenges c WHERE c.challenge_id = ? AND ' . liveChallengeCondition('c')
+    );
+    $live->execute([$cid]);
+
+    if ((int)$live->fetchColumn() === 0) {
+        setFlash('error', 'That challenge is no longer open to join.');
+        redirectTo('/participant/challenges.php');
+    }
+
     try {
         $pdo->prepare(
             'INSERT INTO challenge_participants (challenge_id, user_id) VALUES (?, ?)'
@@ -35,11 +47,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $flash = takeFlash();
 
+// Only challenges that are open right now — an "active" row whose end date
+// has passed is over, and must not be offered.
 $stmt = $pdo->query(
     'SELECT c.*, cat.name AS cat_name
      FROM challenges c
      LEFT JOIN categories cat ON cat.cat_id = c.cat_id
-     WHERE c.status = "active"
+     WHERE ' . liveChallengeCondition('c') . '
      ORDER BY COALESCE(c.start_date, DATE(c.created_at)) ASC, c.challenge_id ASC'
 );
 $list = $stmt ? $stmt->fetchAll() : [];

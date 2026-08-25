@@ -163,7 +163,7 @@ http://localhost:8000/index.php/
 ```text
 Username: admin
 Email: admin@ecotrack.com
-Password: admin1234
+Password: EcoAdmin2026
 ```
 
 ### Moderator
@@ -171,7 +171,7 @@ Password: admin1234
 ```text
 Username: moderator
 Email: mod@ecotrack.com
-Password: mod123
+Password: EcoMod2026
 ```
 
 Participants can create an account using the registration page.

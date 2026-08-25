@@ -50,6 +50,13 @@ $expandedChallengeId = max(0, (int)($_GET['edit'] ?? 0));
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
 
+    // Housekeeping on a write path, never on a render: anything whose end date
+    // has passed is marked closed so the list reflects reality.
+    $expired = closeExpiredChallenges();
+    if ($expired > 0) {
+        setFlash('success', $expired . ' expired challenge' . ($expired === 1 ? '' : 's') . ' closed automatically.');
+    }
+
     $action = $_POST['action'] ?? '';
 
     if ($action === 'create') {
@@ -258,8 +265,25 @@ require_once __DIR__ . '/../layout/header.php';
               <div class="challenge-admin-summary__identity">
                 <div class="challenge-admin-summary__title-row">
                   <h2 class="card-title" style="margin-bottom:0;"><?= sanitise($challenge['title']) ?></h2>
-                  <span class="badge challenge-admin-card__status <?= $challenge['status'] === 'active' ? 'badge-green' : ($challenge['status'] === 'closed' ? 'badge-grey' : 'badge-amber') ?>">
-                    <?= sanitise($challenge['status']) ?>
+                  <?php
+                    // An "active" row whose end date has passed is over. Label it
+                    // that way immediately, rather than waiting for the sweep.
+                    $hasExpired = $challenge['status'] === 'active'
+                        && !empty($challenge['end_date'])
+                        && $challenge['end_date'] < dbToday();
+
+                    if ($hasExpired) {
+                        $statusLabel = 'expired';
+                        $statusClass = 'badge-red';
+                    } else {
+                        $statusLabel = $challenge['status'];
+                        $statusClass = $challenge['status'] === 'active'
+                            ? 'badge-green'
+                            : ($challenge['status'] === 'closed' ? 'badge-grey' : 'badge-amber');
+                    }
+                  ?>
+                  <span class="badge challenge-admin-card__status <?= $statusClass ?>">
+                    <?= sanitise($statusLabel) ?>
                   </span>
                 </div>
                 <p class="meta-copy">

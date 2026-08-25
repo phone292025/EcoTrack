@@ -10,13 +10,13 @@ $pdo = getPDO();
 $pdo->prepare(
     'UPDATE users SET password = ? WHERE email = ?'
 )->execute([
-    '$2y$10$TFwqkDalLGsVc2eUl2UoQ.e6zFYiiqfmlECUA.Fl5J.9.Ax.iGpga',
+    'y$TWyue8NQZBGzkVpeMfNFuerQFYHdz1iCdzrfdKOBmCbPnvYv/HCve',
     'admin@ecotrack.com',
 ]);
 $pdo->prepare(
     'UPDATE users SET password = ? WHERE email = ?'
 )->execute([
-    '$2y$10$43jcNbWQAmePyIJv5sKet.pXb8nt.xaRV8LPsJ.bU8547DCTXApP6',
+    'y$ki7KA8v9RVP352M0S5vofu4WEwJQY0nE51u8Vh6w5z.8wS7dvUIea',
     'mod@ecotrack.com',
 ]);
 echo "Updated admin + moderator password hashes.\n";

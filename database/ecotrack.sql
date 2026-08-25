@@ -269,17 +269,17 @@ INSERT INTO rewards (name, description, category, point_cost, stock) VALUES
 -- Default Admin account
 -- Username: admin
 -- Email: admin@ecotrack.com
--- Password: admin1234
+-- Password: EcoAdmin2026
 INSERT INTO users (username, email, password, role) VALUES
   ('admin', 'admin@ecotrack.com',
-   '$2y$10$TFwqkDalLGsVc2eUl2UoQ.e6zFYiiqfmlECUA.Fl5J.9.Ax.iGpga',
+   'y$TWyue8NQZBGzkVpeMfNFuerQFYHdz1iCdzrfdKOBmCbPnvYv/HCve',
    'admin');
 
 -- Default Moderator account
 -- Username: moderator
 -- Email: mod@ecotrack.com
--- Password: mod123
+-- Password: EcoMod2026
 INSERT INTO users (username, email, password, role) VALUES
   ('moderator', 'mod@ecotrack.com',
-   '$2y$10$43jcNbWQAmePyIJv5sKet.pXb8nt.xaRV8LPsJ.bU8547DCTXApP6',
+   'y$ki7KA8v9RVP352M0S5vofu4WEwJQY0nE51u8Vh6w5z.8wS7dvUIea',
    'moderator');

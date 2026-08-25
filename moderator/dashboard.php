@@ -8,7 +8,11 @@ requireRole('moderator', 'admin');
 $pdo = getPDO();
 $pending = (int)$pdo->query('SELECT COUNT(*) FROM activity_logs WHERE status = "pending"')->fetchColumn();
 $flagged = (int)$pdo->query('SELECT COUNT(*) FROM activity_logs WHERE status = "flagged"')->fetchColumn();
-$activeChallenges = (int)$pdo->query('SELECT COUNT(*) FROM challenges WHERE status = "active"')->fetchColumn();
+// "Live" means active and inside its date window, so an expired challenge is
+// never counted as running.
+$activeChallenges = (int)$pdo->query(
+    'SELECT COUNT(*) FROM challenges c WHERE ' . liveChallengeCondition('c')
+)->fetchColumn();
 $totalChallenges = (int)$pdo->query('SELECT COUNT(*) FROM challenges')->fetchColumn();
 $totalTips = (int)$pdo->query('SELECT COUNT(*) FROM eco_tips')->fetchColumn();
 $tipsThisWeek = (int)$pdo->query('SELECT COUNT(*) FROM eco_tips WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)')->fetchColumn();

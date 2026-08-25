@@ -129,13 +129,13 @@ $pageTitle = 'Login';
           <strong>Demo admin login</strong>
           <span>Username: <code>admin</code></span>
           <span>Email: <code>admin@ecotrack.com</code></span>
-          <span>Password: <code>admin1234</code></span>
+          <span>Password: <code>EcoAdmin2026</code></span>
         </div>
         <div>
           <strong>Demo moderator login</strong>
           <span>Username: <code>moderator</code></span>
           <span>Email: <code>mod@ecotrack.com</code></span>
-          <span>Password: <code>mod123</code></span>
+          <span>Password: <code>EcoMod2026</code></span>
         </div>
       </div>
     <?php endif; ?>
