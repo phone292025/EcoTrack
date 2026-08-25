@@ -2711,26 +2711,26 @@ tr:hover td { background: rgba(45,147,108,0.04); }
     margin-top: 0;
   }
 
-  .shop-page .points-history-table,
-  .shop-page .points-history-table thead,
-  .shop-page .points-history-table tbody,
-  .shop-page .points-history-table tr,
-  .shop-page .points-history-table th,
-  .shop-page .points-history-table td {
+  .points-history-table,
+  .points-history-table thead,
+  .points-history-table tbody,
+  .points-history-table tr,
+  .points-history-table th,
+  .points-history-table td {
     display: block;
     width: 100%;
   }
 
-  .shop-page .points-history-table thead {
+  .points-history-table thead {
     display: none;
   }
 
-  .shop-page .points-history-table tbody {
+  .points-history-table tbody {
     display: grid;
     gap: var(--space-3);
   }
 
-  .shop-page .points-history-table tr {
+  .points-history-table tr {
     display: grid;
     gap: 0.7rem;
     padding: 1rem;
@@ -2740,12 +2740,12 @@ tr:hover td { background: rgba(45,147,108,0.04); }
     box-shadow: 0 8px 18px rgba(19, 41, 32, 0.04);
   }
 
-  .shop-page .points-history-table td {
+  .points-history-table td {
     padding: 0;
     border: 0;
   }
 
-  .shop-page .points-history-table td[data-label]::before {
+  .points-history-table td[data-label]::before {
     content: attr(data-label);
     display: block;
     margin-bottom: 0.22rem;
@@ -2756,12 +2756,12 @@ tr:hover td { background: rgba(45,147,108,0.04); }
     text-transform: uppercase;
   }
 
-  .shop-page .shop-history-table__cell--reward {
+  .shop-history-table__cell--reward {
     font-weight: 700;
     color: var(--clr-text);
   }
 
-  .shop-page .shop-history-table__cell--spent {
+  .shop-history-table__cell--spent {
     font-size: 1rem;
   }
 }
@@ -3543,7 +3543,7 @@ tr:hover td { background: rgba(45,147,108,0.04); }
   }
 
   .shop-page .shop-table tr,
-  .shop-page .points-history-table tr {
+  .points-history-table tr {
     padding: 0.9rem;
     border-radius: 16px;
   }
@@ -3560,8 +3560,8 @@ tr:hover td { background: rgba(45,147,108,0.04); }
   .shop-page .shop-table__cell--points,
   .shop-page .shop-table__cell--stock,
   .shop-page .shop-table__cell--status,
-  .shop-page .shop-history-table__cell--spent,
-  .shop-page .points-history-table td {
+  .shop-history-table__cell--spent,
+  .points-history-table td {
     font-size: 0.92rem;
   }
 
@@ -3702,36 +3702,36 @@ tr:hover td { background: rgba(45,147,108,0.04); }
     font-size: 0.96rem;
   }
   .shop-page .shop-table tr,
-  .shop-page .points-history-table tr {
+  .points-history-table tr {
     border-radius: 16px;
     padding: var(--space-3);
     margin-bottom: var(--space-3);
     background: #fff;
     box-shadow: 0 8px 18px rgba(19, 41, 32, 0.05);
   }
-  .shop-page .points-history-table,
-  .shop-page .points-history-table thead,
-  .shop-page .points-history-table tbody,
-  .shop-page .points-history-table tr,
-  .shop-page .points-history-table th,
-  .shop-page .points-history-table td {
+  .points-history-table,
+  .points-history-table thead,
+  .points-history-table tbody,
+  .points-history-table tr,
+  .points-history-table th,
+  .points-history-table td {
     display: block;
     width: 100%;
   }
-  .shop-page .points-history-table thead {
+  .points-history-table thead {
     display: none;
   }
-  .shop-page .points-history-table td {
+  .points-history-table td {
     border: 0;
     border-bottom: 1px dashed #e4ece7;
     padding: 0.65rem 0;
     text-align: left;
   }
-  .shop-page .points-history-table td:last-child {
+  .points-history-table td:last-child {
     border-bottom: 0;
     padding-bottom: 0;
   }
-  .shop-page .points-history-table td[data-label]::before {
+  .points-history-table td[data-label]::before {
     content: attr(data-label);
     display: block;
     margin-bottom: 0.25rem;
@@ -3741,7 +3741,7 @@ tr:hover td { background: rgba(45,147,108,0.04); }
     letter-spacing: 0.03em;
     text-transform: uppercase;
   }
-  .shop-page .points-history-table__delta {
+  .points-history-table__delta {
     text-align: left;
   }
   .reward-admin-summary-grid { grid-template-columns: 1fr; }
@@ -5559,4 +5559,56 @@ button:disabled {
 @media (max-width: 560px) {
   .profile-avatar-row { gap: var(--space-4); }
   .profile-forms { gap: var(--space-5); }
+}
+
+/* ============================================================
+   TOUCH TARGET SIZES
+   On a phone every control has to be comfortably tappable. These
+   raise the controls that were rendering under ~44px tall, which is
+   the size a fingertip actually needs.
+   ============================================================ */
+
+@media (max-width: 768px) {
+  /* The hamburger is the primary navigation control on mobile and was
+     the smallest target on the page at 40x32. */
+  .hamburger {
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .nav-logo {
+    min-height: 44px;
+    align-items: center;
+  }
+
+  /* Small buttons keep their compact look but gain a tappable height. */
+  .btn-sm {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Footer links were 22px tall with no padding to aim at. */
+  .footer-links {
+    gap: var(--space-2) var(--space-4);
+  }
+  .footer-links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 var(--space-1);
+  }
+
+  /* Pagination controls sit close together, so give them room. */
+  .pagination .btn {
+    min-height: 44px;
+  }
+
+  /* Status pills read small on a phone. */
+  .activity-list__status {
+    font-size: 0.78rem;
+  }
 }
