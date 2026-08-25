@@ -161,13 +161,14 @@ function initCO2Chart(data) {
  *  Updates the inline progress bar on the dashboard.
  * ═══════════════════════════════════════════════════════════ */
 function initGoalProgressBar(percent) {
-  const bar   = document.getElementById('goalProgressBar');
-  const label = document.getElementById('goalProgressLabel');
+  const bar = document.getElementById('goalProgressBar');
   if (!bar) return;
 
   percent = Math.min(100, Math.max(0, percent));
   bar.style.width = percent + '%';
-  bar.setAttribute('aria-valuenow', percent);
+
+  const track = bar.closest('.progress-bar');
+  if (track) track.setAttribute('aria-valuenow', percent);
 
   // Colour-coded: red < 33%, amber < 66%, green >= 66%
   bar.className = 'progress-fill';
@@ -175,14 +176,36 @@ function initGoalProgressBar(percent) {
   else if (percent >= 33) bar.classList.add('progress-fill--amber');
   else                    bar.classList.add('progress-fill--red');
 
-  if (label) label.textContent = percent + '%';
+  // The label is rendered server-side with the full "45 / 100 points - 45%
+  // complete" text. Overwriting it here would throw that detail away.
 }
 
 /* ═══════════════════════════════════════════════════════════
  *  AUTO-INIT on DOMContentLoaded
  * ═══════════════════════════════════════════════════════════ */
+/**
+ * If Chart.js failed to load, say so in place of the canvas instead of
+ * leaving a silent blank box.
+ */
+function reportMissingChartLibrary() {
+  document.querySelectorAll('#categoryChart, #co2Chart').forEach(canvas => {
+    const msg = document.createElement('p');
+    msg.className = 'chart-empty';
+    msg.textContent = 'Charts could not be loaded. Refresh the page to try again.';
+    canvas.parentElement.replaceChild(msg, canvas);
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  if (typeof CATEGORY_DATA !== 'undefined') initCategoryChart(CATEGORY_DATA);
-  if (typeof CO2_DATA      !== 'undefined') initCO2Chart(CO2_DATA);
-  if (typeof GOAL_PERCENT  !== 'undefined') initGoalProgressBar(GOAL_PERCENT);
+  const wantsChart = typeof CATEGORY_DATA !== 'undefined' || typeof CO2_DATA !== 'undefined';
+
+  if (wantsChart && typeof Chart === 'undefined') {
+    reportMissingChartLibrary();
+  } else {
+    if (typeof CATEGORY_DATA !== 'undefined') initCategoryChart(CATEGORY_DATA);
+    if (typeof CO2_DATA      !== 'undefined') initCO2Chart(CO2_DATA);
+  }
+
+  // The progress bar is pure CSS and does not need Chart.js.
+  if (typeof GOAL_PERCENT !== 'undefined') initGoalProgressBar(GOAL_PERCENT);
 });

@@ -107,25 +107,25 @@ require_once __DIR__ . '/../layout/header.php';
 
   <div class="dashboard-grid admin-dashboard-kpis admin-participant-summary">
     <article class="stat-widget admin-kpi-card">
-      <span class="stat-widget__icon">Participants</span>
+      <span class="stat-widget__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5Zm0 2c-4 0-8 2-8 5v3h16v-3c0-3-4-5-8-5Z"/></svg></span>
       <span class="stat-widget__value"><?= $totalParticipants ?></span>
       <span class="stat-widget__label">Registered participant accounts</span>
     </article>
 
     <article class="stat-widget stat-widget--info admin-kpi-card">
-      <span class="stat-widget__icon">Active</span>
+      <span class="stat-widget__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M13 2 4.1 13.4a.6.6 0 0 0 .5 1H11l-1 7.6 8.9-11.4a.6.6 0 0 0-.5-1H12l1-7.6Z"/></svg></span>
       <span class="stat-widget__value"><?= $activeParticipants ?></span>
       <span class="stat-widget__label">Active in the last 30 days</span>
     </article>
 
     <article class="stat-widget admin-kpi-card">
-      <span class="stat-widget__icon">Average</span>
+      <span class="stat-widget__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M3 17h4V9H3v8Zm7 0h4V4h-4v13Zm7 0h4v-6h-4v6ZM2 20h20v2H2v-2Z"/></svg></span>
       <span class="stat-widget__value"><?= number_format($averagePoints) ?></span>
       <span class="stat-widget__label">Average participant points</span>
     </article>
 
     <article class="stat-widget stat-widget--accent admin-kpi-card">
-      <span class="stat-widget__icon">Streak</span>
+      <span class="stat-widget__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 2s5 5.2 5 9.5A5 5 0 0 1 7 11.5C7 7.2 12 2 12 2Z"/></svg></span>
       <span class="stat-widget__value"><?= $highestStreak ?></span>
       <span class="stat-widget__label">Highest current streak</span>
     </article>

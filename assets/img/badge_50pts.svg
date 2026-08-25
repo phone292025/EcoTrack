@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Green Starter badge">
+  <circle cx="32" cy="32" r="30" fill="#e8f5ef"/>
+  <circle cx="32" cy="32" r="30" fill="none" stroke="#3aa17e" stroke-width="3"/>
+  <circle cx="32" cy="32" r="24" fill="none" stroke="#3aa17e" stroke-width="1.5" opacity=".45"/>
+  <g fill="#3aa17e" transform="translate(16 16)"><path d="M15 30V17h2v13h-2Z"/><path d="M16 18C9 18 5 14 5 8c7 0 11 4 11 10Zm0 0c0-7 4-11 11-11 0 6-4 11-11 11Z"/></g>
+</svg>

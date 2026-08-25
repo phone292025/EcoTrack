@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Goal Crusher badge">
+  <circle cx="32" cy="32" r="30" fill="#f1ecf8"/>
+  <circle cx="32" cy="32" r="30" fill="none" stroke="#7b5ea7" stroke-width="3"/>
+  <circle cx="32" cy="32" r="24" fill="none" stroke="#7b5ea7" stroke-width="1.5" opacity=".45"/>
+  <g fill="#7b5ea7" transform="translate(16 16)"><circle cx="16" cy="16" r="15" fill="none" stroke="#7b5ea7" stroke-width="3"/><circle cx="16" cy="16" r="9" fill="none" stroke="#7b5ea7" stroke-width="3"/><circle cx="16" cy="16" r="3"/></g>
+</svg>

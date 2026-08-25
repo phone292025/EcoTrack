@@ -7,8 +7,6 @@ requireRole('participant');
 
 $uid = currentUserId();
 $pdo = getPDO();
-$err = '';
-$ok = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_goal') {
     validateCsrf($_POST['csrf'] ?? '');
@@ -16,9 +14,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
     $period = $_POST['period'] ?? 'weekly';
 
     if ($target < 10) {
-        $err = 'Goal target must be at least 10 points.';
+        setFlash('error', 'Goal target must be at least 10 points.');
     } elseif (!in_array($period, ['weekly', 'monthly'], true)) {
-        $err = 'Please choose a valid goal period.';
+        setFlash('error', 'Please choose a valid goal period.');
     } else {
         $startDate = new DateTimeImmutable('today');
         $endDate = $period === 'monthly'
@@ -47,25 +45,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
             ]);
 
             $pdo->commit();
-            $ok = 'Goal saved successfully.';
+            setFlash('success', 'Goal saved successfully.');
         } catch (Throwable $e) {
-            $pdo->rollBack();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             throw $e;
         }
     }
+
+    // Redirect so refreshing the page cannot create a second goal.
+    redirectToSelf();
 }
 
-refreshUserChallengeProgress($uid);
+$flash = takeFlash();
 
-$user = getUserById($uid);
-$impact = getEcoImpactSummary($uid);
-$goal = getUserGoalProgress($uid);
-$recent = getUserActivityLog($uid, 1, 20);
+$user           = getUserById($uid);
+$impact         = getEcoImpactSummary($uid);
+$goal           = getUserGoalProgress($uid);
+$recent         = getUserActivityLog($uid, 1, 20);
 $challengeStats = getUserChallengeStats($uid);
-$announcements = getRecentAnnouncements(3);
-$tips = getRecentEcoTips(3);
+$announcements  = getRecentAnnouncements(3);
+$tips           = getRecentEcoTips(3);
+$checkedInToday = hasCheckedInToday($uid);
 
-$pageTitle = 'Dashboard';
+$pageTitle   = 'Dashboard';
+$needsCharts = !empty($goal);
 require_once __DIR__ . '/../layout/header.php';
 ?>
 
@@ -81,27 +86,39 @@ require_once __DIR__ . '/../layout/header.php';
     </div>
   </section>
 
-  <?php if ($err): ?><div class="flash-message flash-error" role="alert"><?= sanitise($err) ?></div><?php endif; ?>
-  <?php if ($ok): ?><div class="flash-message flash-success" role="status"><?= sanitise($ok) ?></div><?php endif; ?>
+  <?php foreach ($flash['error'] as $message): ?>
+    <div class="flash-message flash-error" role="alert"><?= sanitise($message) ?></div>
+  <?php endforeach; ?>
+  <?php foreach ($flash['success'] as $message): ?>
+    <div class="flash-message flash-success" role="status"><?= sanitise($message) ?></div>
+  <?php endforeach; ?>
 
   <div class="dashboard-grid participant-dashboard-kpis">
     <div class="stat-widget">
-      <span class="stat-widget__icon">Pts</span>
+      <span class="stat-widget__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 2 9.2 8.6 2 9.2l5.5 4.7L5.8 21 12 17.3 18.2 21l-1.7-7.1L22 9.2l-7.2-.6L12 2Z"/></svg>
+      </span>
       <span class="stat-widget__value" id="dashPoints"><?= (int)($user['points'] ?? 0) ?></span>
       <span class="stat-widget__label">Green points</span>
     </div>
     <div class="stat-widget stat-widget--accent">
-      <span class="stat-widget__icon">CO2</span>
+      <span class="stat-widget__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M4 19h16v2H4v-2Zm1-4 4.5-5.5 3 3.5L16 8l4 7H5Z"/></svg>
+      </span>
       <span class="stat-widget__value"><?= sanitise((string)$impact['co2_kg']) ?> kg</span>
       <span class="stat-widget__label">Estimated CO2 saved</span>
     </div>
     <div class="stat-widget stat-widget--info">
-      <span class="stat-widget__icon">Join</span>
+      <span class="stat-widget__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M18 3h3v4a5 5 0 0 1-4.1 4.9A5 5 0 0 1 13 15.9V19h3v2H8v-2h3v-3.1a5 5 0 0 1-3.9-4A5 5 0 0 1 3 7V3h3V1h12v2Zm0 2v4.9A3 3 0 0 0 19 7V5h-1ZM5 5v2a3 3 0 0 0 1 2.2V5H5Z"/></svg>
+      </span>
       <span class="stat-widget__value"><?= (int)($challengeStats['joined'] ?? 0) ?></span>
       <span class="stat-widget__label">Challenges joined</span>
     </div>
     <div class="stat-widget">
-      <span class="stat-widget__icon">Done</span>
+      <span class="stat-widget__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z"/></svg>
+      </span>
       <span class="stat-widget__value"><?= (int)($challengeStats['completed'] ?? 0) ?></span>
       <span class="stat-widget__label">Challenges completed</span>
     </div>
@@ -114,9 +131,14 @@ require_once __DIR__ . '/../layout/header.php';
         <p class="card-copy participant-dashboard-checkin__copy">Check in once per day for +5 points and to keep your streak moving.</p>
         <form id="checkinForm" class="dashboard-checkin">
           <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">
-          <button type="submit" class="btn btn-primary participant-dashboard-checkin__button" id="checkinBtn">Check in today</button>
+          <button type="submit" class="btn btn-primary participant-dashboard-checkin__button"
+                  id="checkinBtn" <?= $checkedInToday ? 'disabled' : '' ?>>
+            <?= $checkedInToday ? 'Checked in today' : 'Check in today' ?>
+          </button>
         </form>
-        <p id="checkinMsg" class="field-error participant-dashboard-checkin__message" role="status"></p>
+        <p id="checkinMsg" class="participant-dashboard-checkin__message" role="status">
+          <?= $checkedInToday ? 'Come back tomorrow to keep your streak alive.' : '' ?>
+        </p>
       </div>
 
       <div class="card">
@@ -134,11 +156,16 @@ require_once __DIR__ . '/../layout/header.php';
             <p class="participant-dashboard-inline-copy">
               Target <strong><?= (int)$goal['target'] ?></strong> points by <?= sanitise($goal['end_date']) ?>.
             </p>
-            <div class="progress-bar">
+            <div class="progress-bar" role="progressbar"
+                 aria-valuenow="<?= (int)$goal['percent'] ?>" aria-valuemin="0" aria-valuemax="100"
+                 aria-label="Goal progress">
               <div id="goalProgressBar" class="progress-fill" style="width:<?= (int)$goal['percent'] ?>%;"></div>
             </div>
             <p id="goalProgressLabel" class="participant-dashboard-goal-label">
               <?= (int)$goal['points_in_period'] ?> / <?= (int)$goal['target'] ?> points &middot; <?= (int)$goal['percent'] ?>% complete
+              <?php if ((int)$goal['days_left'] > 0): ?>
+                &middot; <?= (int)$goal['days_left'] ?> day<?= (int)$goal['days_left'] === 1 ? '' : 's' ?> left
+              <?php endif; ?>
             </p>
           </div>
         <?php endif; ?>
@@ -182,7 +209,10 @@ require_once __DIR__ . '/../layout/header.php';
                   <span class="activity-list__body">
                     <strong><?= sanitise($row['cat_name']) ?></strong>
                     <span class="activity-list__description"><?= sanitise($row['description']) ?></span>
-                    <span class="activity-list__status"><?= sanitise($row['status']) ?></span>
+                    <span class="activity-list__status status-<?= sanitise($row['status']) ?>"><?= sanitise($row['status']) ?></span>
+                    <?php if ($row['status'] === 'rejected' && !empty($row['review_note'])): ?>
+                      <span class="activity-list__note">Moderator note: <?= sanitise($row['review_note']) ?></span>
+                    <?php endif; ?>
                   </span>
                   <span class="activity-list__points"><?= (int)$row['points'] ?> pts</span>
                 </li>
@@ -258,12 +288,16 @@ require_once __DIR__ . '/../layout/header.php';
   const msg = document.getElementById('checkinMsg');
   const btn = document.getElementById('checkinBtn');
   const ptsEl = document.getElementById('dashPoints');
-  if (!form || !msg) return;
+  if (!form || !msg || !btn) return;
 
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
+    if (btn.disabled) return;
+
     msg.textContent = '';
+    msg.className = 'participant-dashboard-checkin__message';
     btn.disabled = true;
+
     try {
       const fd = new FormData(form);
       const res = await fetch('<?= BASE_URL ?>/ajax/checkin.php', {
@@ -273,20 +307,23 @@ require_once __DIR__ . '/../layout/header.php';
         credentials: 'same-origin'
       });
       const data = await res.json();
+
       if (data.success) {
-        msg.style.color = 'var(--clr-primary)';
+        msg.classList.add('is-success');
         msg.textContent = data.message || 'Checked in!';
+        btn.textContent = 'Checked in today';
         if (ptsEl && data.new_points != null) ptsEl.textContent = data.new_points;
         const badge = document.getElementById('navPointsBadge');
         if (badge && data.new_points != null) badge.textContent = data.new_points + ' pts';
-        btn.disabled = true;
       } else {
-        msg.style.color = 'var(--clr-danger)';
+        msg.classList.add('is-error');
         msg.textContent = data.message || 'Check-in failed.';
-        btn.disabled = false;
+        // Already checked in is a permanent state for today; anything else
+        // is worth letting them retry.
+        btn.disabled = res.status === 409;
       }
     } catch (err) {
-      msg.style.color = 'var(--clr-danger)';
+      msg.classList.add('is-error');
       msg.textContent = 'Network error. Try again.';
       btn.disabled = false;
     }

@@ -2,7 +2,8 @@
    EcoTrack — Global Stylesheet
    File: assets/css/style.css
    Approach: CSS Custom Properties + Grid/Flexbox layout
-   Breakpoints: 768px (tablet), 480px (mobile)
+   Breakpoints: 1180 (wide), 960 (small desktop), 768 (tablet),
+                640 / 560 (large phone), 480 (phone)
    ============================================================ */
 
 /* ── CSS Variables ─────────────────────────────────────────── */
@@ -1564,7 +1565,7 @@ tr:hover td { background: rgba(45,147,108,0.04); }
   background: #eef5f1;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 960px) {
   .moderator-dashboard-hero {
     grid-template-columns: 1fr;
   }
@@ -4150,7 +4151,7 @@ tr:hover td { background: rgba(45,147,108,0.04); }
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 960px) {
   .reward-admin-header,
   .reward-admin-board__header,
   .reward-admin-edit-row__header {
@@ -4545,7 +4546,7 @@ tr:hover td { background: rgba(45,147,108,0.04); }
   }
 }
 
-@media (max-width: 540px) {
+@media (max-width: 560px) {
   .reward-admin-summary-grid {
     grid-template-columns: 1fr;
   }
@@ -5170,4 +5171,392 @@ tr:hover td { background: rgba(45,147,108,0.04); }
   .admin-side-card__chart {
     min-height: 250px;
   }
+}
+
+/* ============================================================
+   ACCESSIBILITY BASELINE
+   Added so keyboard and reduced-motion users are not left out.
+   ============================================================ */
+
+/* A visible focus ring on everything interactive. :focus-visible keeps it
+   off mouse clicks, so it never looks noisy for pointer users. */
+:focus-visible {
+  outline: 3px solid var(--clr-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Inside the dark navbar the green ring lacks contrast, so invert it. */
+.navbar :focus-visible,
+.site-footer :focus-visible {
+  outline-color: #ffffff;
+}
+
+/* Fallback for browsers without :focus-visible support. */
+@supports not selector(:focus-visible) {
+  a:focus,
+  button:focus,
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: 3px solid var(--clr-primary);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================
+   FORM HELPERS
+   ============================================================ */
+
+.field-hint {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: 0.82rem;
+  color: var(--clr-text-muted);
+  line-height: 1.45;
+}
+
+.field-optional {
+  font-weight: 400;
+  color: var(--clr-text-muted);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: var(--clr-bg);
+  color: var(--clr-text-muted);
+  cursor: not-allowed;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ============================================================
+   FLASH MESSAGES - dismissible
+   ============================================================ */
+
+.flash-message {
+  position: relative;
+  padding-right: 2.75rem;
+  overflow: hidden;
+}
+
+.flash-message__dismiss {
+  position: absolute;
+  top: 50%;
+  right: 0.6rem;
+  transform: translateY(-50%);
+  width: 1.75rem;
+  height: 1.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  opacity: 0.65;
+  transition: opacity var(--transition);
+}
+
+.flash-message__dismiss:hover { opacity: 1; }
+
+.flash-message--closing {
+  height: 0 !important;
+  margin: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  border-width: 0 !important;
+  opacity: 0;
+  transition: all 0.2s ease;
+}
+
+/* ============================================================
+   AUTH PAGES
+   ============================================================ */
+
+.auth-head {
+  text-align: center;
+  margin-bottom: var(--space-5);
+}
+
+.auth-head img { margin: 0 auto var(--space-2); }
+
+.auth-subtitle {
+  color: var(--clr-text-muted);
+  font-size: 0.9rem;
+}
+
+.auth-footer {
+  text-align: center;
+  margin-top: var(--space-5);
+  font-size: 0.9rem;
+  color: var(--clr-text-muted);
+}
+
+.auth-footer a { font-weight: 600; }
+
+.demo-credentials {
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+  border: 1px dashed var(--clr-border);
+  border-radius: var(--radius-md);
+  background: var(--clr-primary-light);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.demo-credentials strong {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: 0.9rem;
+}
+
+.demo-credentials span {
+  display: block;
+  color: var(--clr-text-muted);
+  font-size: 0.85rem;
+}
+
+.demo-credentials code {
+  font-family: var(--font-mono);
+  background: var(--clr-surface);
+  padding: 0 0.3em;
+  border-radius: var(--radius-sm);
+}
+
+/* ============================================================
+   ACTIVITY STATUS + MODERATOR NOTES
+   ============================================================ */
+
+.activity-list__status {
+  display: inline-block;
+  margin-top: var(--space-1);
+  padding: 0.1em 0.6em;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.status-pending  { background: #fdf1dc; color: #8a5a12; }
+.status-approved { background: var(--clr-primary-light); color: var(--clr-primary-dark); }
+.status-rejected { background: #fbe6e7; color: #97282c; }
+.status-flagged  { background: #f3e8f8; color: #6b3f86; }
+
+.activity-list__note {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: 0.82rem;
+  color: var(--clr-text-muted);
+  font-style: italic;
+}
+
+/* ============================================================
+   CHECK-IN MESSAGE STATES
+   ============================================================ */
+
+.participant-dashboard-checkin__message {
+  margin-top: var(--space-2);
+  font-size: 0.88rem;
+  color: var(--clr-text-muted);
+  min-height: 1.2em;
+}
+
+.participant-dashboard-checkin__message.is-success { color: var(--clr-primary); font-weight: 600; }
+.participant-dashboard-checkin__message.is-error   { color: var(--clr-danger);  font-weight: 600; }
+
+/* ============================================================
+   CHALLENGE PROGRESS
+   ============================================================ */
+
+.challenge-progress { margin-top: var(--space-3); }
+
+.challenge-progress__label {
+  margin-top: var(--space-1);
+  font-size: 0.82rem;
+  color: var(--clr-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   BADGE GALLERY
+   ============================================================ */
+
+.badge-item__art {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto var(--space-2);
+}
+
+.badge-item__art img {
+  width: 64px;
+  height: 64px;
+}
+
+.badge-item--locked .badge-item__art img {
+  filter: grayscale(1);
+  opacity: 0.4;
+}
+
+.badge-item__lock {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  color: var(--clr-text-muted);
+}
+
+.badge-item__earned {
+  margin-top: var(--space-1);
+  font-size: 0.72rem;
+  color: var(--clr-primary);
+  font-weight: 600;
+}
+
+/* ============================================================
+   PROFILE SETTINGS
+   ============================================================ */
+
+.profile-avatar-row {
+  display: flex;
+  gap: var(--space-5);
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-5);
+  border-bottom: 1px solid var(--clr-border);
+}
+
+.profile-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex: none;
+  background: var(--clr-primary-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--clr-border);
+}
+
+.profile-avatar img { width: 72px; height: 72px; object-fit: cover; }
+
+.profile-avatar__initial {
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--clr-primary);
+}
+
+.profile-avatar-form { flex: 1 1 240px; min-width: 0; }
+
+.profile-forms {
+  display: grid;
+  gap: var(--space-6);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.profile-form__title {
+  font-size: 1rem;
+  margin-bottom: var(--space-3);
+  color: var(--clr-primary-dark);
+}
+
+/* ============================================================
+   REVIEW QUEUE
+   ============================================================ */
+
+.submission-card__who { margin: 0 0 var(--space-1); }
+
+.submission-card__description { margin: var(--space-3) 0 0; }
+
+.submission-card__prior-note {
+  margin-top: var(--space-2);
+  font-size: 0.85rem;
+  color: var(--clr-text-muted);
+  font-style: italic;
+}
+
+.submission-actions {
+  margin-top: var(--space-3);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.submission-actions__note { margin-bottom: 0; }
+
+.submission-actions__buttons {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* ============================================================
+   PAGINATION
+   ============================================================ */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--clr-border);
+  flex-wrap: wrap;
+}
+
+.pagination__status {
+  font-size: 0.85rem;
+  color: var(--clr-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   TABULAR FIGURES
+   Numbers that sit in columns should line up.
+   ============================================================ */
+
+.stat-widget__value,
+.points-history-table__delta,
+.leaderboard-list__points,
+.activity-list__points {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Stat icons are SVG now rather than placeholder letters. */
+.stat-widget__icon svg { display: block; }
+
+@media (max-width: 560px) {
+  .profile-avatar-row { gap: var(--space-4); }
+  .profile-forms { gap: var(--space-5); }
 }

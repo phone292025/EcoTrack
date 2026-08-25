@@ -6,55 +6,74 @@ require_once __DIR__ . '/../includes/functions.php';
 requireRole('admin');
 
 $pdo = getPDO();
-$userForm = [
-    'username' => '',
-    'email' => '',
-    'role' => 'participant',
-];
-$err = '';
-$ok = '';
+
+/**
+ * Guard against removing the last way into the admin area. Demoting or
+ * deleting an admin is only allowed while another admin would remain.
+ */
+function otherAdminsExist(PDO $pdo, int $excludingUserId): bool
+{
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE role = "admin" AND user_id <> ?');
+    $stmt->execute([$excludingUserId]);
+
+    return (int)$stmt->fetchColumn() > 0;
+}
+
+/** Password rules for admin-created accounts, same as self-registration. */
+function passwordProblem(string $password): ?string
+{
+    if (strlen($password) < 8) {
+        return 'Password must be at least 8 characters.';
+    }
+    if (!preg_match('/[A-Z]/', $password) || !preg_match('/[0-9]/', $password)) {
+        return 'Password must include at least one uppercase letter and one number.';
+    }
+    return null;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
     $action = $_POST['action'] ?? 'create';
 
     if ($action === 'create') {
-        $userForm = [
-            'username' => trim($_POST['username'] ?? ''),
-            'email' => trim($_POST['email'] ?? ''),
-            'role' => $_POST['role'] ?? 'participant',
-        ];
+        $username = trim($_POST['username'] ?? '');
+        $email    = trim($_POST['email'] ?? '');
+        $role     = $_POST['role'] ?? 'participant';
         $password = $_POST['password'] ?? '';
 
-        if (strlen($userForm['username']) < 3) {
-            $err = 'Username must be at least 3 characters.';
-        } elseif (!filter_var($userForm['email'], FILTER_VALIDATE_EMAIL)) {
-            $err = 'Please enter a valid email address.';
-        } elseif (!in_array($userForm['role'], ['participant', 'moderator', 'admin'], true)) {
-            $err = 'Please choose a valid role.';
-        } elseif (strlen($password) < 8) {
-            $err = 'Password must be at least 8 characters.';
+        if (strlen($username) < 3) {
+            setFlash('error', 'Username must be at least 3 characters.');
+        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            setFlash('error', 'Please enter a valid email address.');
+        } elseif (!in_array($role, ['participant', 'moderator', 'admin'], true)) {
+            setFlash('error', 'Please choose a valid role.');
+        } elseif (($problem = passwordProblem($password)) !== null) {
+            setFlash('error', $problem);
         } else {
             try {
                 $pdo->prepare(
                     'INSERT INTO users (username, email, password, role)
                      VALUES (?, ?, ?, ?)'
                 )->execute([
-                    $userForm['username'],
-                    $userForm['email'],
-                    password_hash($password, PASSWORD_BCRYPT),
-                    $userForm['role'],
+                    $username,
+                    $email,
+                    password_hash($password, PASSWORD_DEFAULT),
+                    $role,
                 ]);
-                $ok = 'User created.';
-                $userForm = [
-                    'username' => '',
-                    'email' => '',
-                    'role' => 'participant',
-                ];
+                setFlash('success', 'User created.');
+                setFormOld([]);
+                redirectToSelf($_SERVER['QUERY_STRING'] ?? '');
             } catch (PDOException $e) {
-                $err = 'Username or email already exists.';
+                if (isDuplicateKeyError($e)) {
+                    setFlash('error', 'That username or email is already registered.');
+                } else {
+                    error_log('[EcoTrack users] ' . $e->getMessage());
+                    setFlash('error', 'Could not create the user right now. Please try again.');
+                }
             }
         }
+
+        setFormOld(['username' => $username, 'email' => $email, 'role' => $role]);
     } elseif ($action === 'update') {
         $userId = (int)($_POST['user_id'] ?? 0);
         $username = trim($_POST['username'] ?? '');
@@ -62,14 +81,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $role = $_POST['role'] ?? 'participant';
         $newPassword = $_POST['new_password'] ?? '';
 
-        if ($userId <= 0) {
-            $err = 'Invalid user selected.';
+        $existing = $pdo->prepare('SELECT role FROM users WHERE user_id = ?');
+        $existing->execute([$userId]);
+        $existingRole = (string)($existing->fetchColumn() ?: '');
+
+        $passwordProblem = $newPassword !== '' ? passwordProblem($newPassword) : null;
+
+        if ($userId <= 0 || $existingRole === '') {
+            setFlash('error', 'Invalid user selected.');
         } elseif (strlen($username) < 3) {
-            $err = 'Username must be at least 3 characters.';
+            setFlash('error', 'Username must be at least 3 characters.');
         } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $err = 'Please enter a valid email address.';
+            setFlash('error', 'Please enter a valid email address.');
         } elseif (!in_array($role, ['participant', 'moderator', 'admin'], true)) {
-            $err = 'Please choose a valid role.';
+            setFlash('error', 'Please choose a valid role.');
+        } elseif ($userId === currentUserId() && $role !== 'admin') {
+            setFlash('error', 'You cannot change your own role. Ask another admin to do it.');
+        } elseif ($existingRole === 'admin' && $role !== 'admin' && !otherAdminsExist($pdo, $userId)) {
+            setFlash('error', 'This is the last admin account. Promote another admin before changing this one.');
+        } elseif ($passwordProblem !== null) {
+            setFlash('error', $passwordProblem);
         } else {
             try {
                 if ($newPassword !== '') {
@@ -77,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'UPDATE users
                          SET username = ?, email = ?, role = ?, password = ?
                          WHERE user_id = ?'
-                    )->execute([$username, $email, $role, password_hash($newPassword, PASSWORD_BCRYPT), $userId]);
+                    )->execute([$username, $email, $role, password_hash($newPassword, PASSWORD_DEFAULT), $userId]);
                 } else {
                     $pdo->prepare(
                         'UPDATE users
@@ -85,21 +116,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                          WHERE user_id = ?'
                     )->execute([$username, $email, $role, $userId]);
                 }
-                $ok = 'User updated.';
+                setFlash('success', 'User updated.');
             } catch (PDOException $e) {
-                $err = 'Username or email already exists.';
+                if (isDuplicateKeyError($e)) {
+                    setFlash('error', 'That username or email is already taken.');
+                } else {
+                    error_log('[EcoTrack users] ' . $e->getMessage());
+                    setFlash('error', 'Could not update the user right now. Please try again.');
+                }
             }
         }
     } elseif ($action === 'delete') {
         $userId = (int)($_POST['user_id'] ?? 0);
-        if ($userId <= 0 || $userId === currentUserId()) {
-            $err = 'You cannot delete this user.';
+
+        $existing = $pdo->prepare('SELECT role FROM users WHERE user_id = ?');
+        $existing->execute([$userId]);
+        $existingRole = (string)($existing->fetchColumn() ?: '');
+
+        if ($userId <= 0 || $existingRole === '') {
+            setFlash('error', 'Invalid user selected.');
+        } elseif ($userId === currentUserId()) {
+            setFlash('error', 'You cannot delete your own account.');
+        } elseif ($existingRole === 'admin' && !otherAdminsExist($pdo, $userId)) {
+            setFlash('error', 'This is the last admin account and cannot be deleted.');
         } else {
             $pdo->prepare('DELETE FROM users WHERE user_id = ?')->execute([$userId]);
-            $ok = 'User deleted.';
+            setFlash('success', 'User deleted.');
         }
     }
+
+    // Redirect so a refresh cannot repeat a create or a delete.
+    redirectToSelf($_SERVER['QUERY_STRING'] ?? '');
 }
+
+$flash = takeFlash();
+$old = takeFormOld();
+$userForm = [
+    'username' => $old['username'] ?? '',
+    'email'    => $old['email'] ?? '',
+    'role'     => $old['role'] ?? 'participant',
+];
 
 $roleCounts = [
     'participant' => 0,
@@ -235,27 +291,31 @@ require_once __DIR__ . '/../layout/header.php';
     <span class="badge badge-blue"><?= $totalUsers ?> user<?= $totalUsers === 1 ? '' : 's' ?></span>
   </div>
 
-  <?php if ($err): ?><div class="flash-message flash-error" role="alert"><?= sanitise($err) ?></div><?php endif; ?>
-  <?php if ($ok): ?><div class="flash-message flash-success" role="status"><?= sanitise($ok) ?></div><?php endif; ?>
+  <?php foreach ($flash['error'] as $flashMessage): ?>
+    <div class="flash-message flash-error" role="alert"><?= sanitise($flashMessage) ?></div>
+  <?php endforeach; ?>
+  <?php foreach ($flash['success'] as $flashMessage): ?>
+    <div class="flash-message flash-success" role="status"><?= sanitise($flashMessage) ?></div>
+  <?php endforeach; ?>
 
   <div class="dashboard-grid admin-user-summary-grid">
     <article class="stat-widget admin-user-summary-card">
-      <span class="stat-widget__icon">Total</span>
+      <span class="stat-widget__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M4 4h16v3H4V4Zm0 5h16v3H4V9Zm0 5h10v3H4v-3Zm0 5h10v2H4v-2Z"/></svg></span>
       <span class="stat-widget__value"><?= $totalUsers ?></span>
       <span class="stat-widget__label">Accounts on the platform</span>
     </article>
     <article class="stat-widget admin-user-summary-card">
-      <span class="stat-widget__icon">Participants</span>
+      <span class="stat-widget__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5Zm0 2c-4 0-8 2-8 5v3h16v-3c0-3-4-5-8-5Z"/></svg></span>
       <span class="stat-widget__value"><?= $roleCounts['participant'] ?></span>
       <span class="stat-widget__label">Learners and activity loggers</span>
     </article>
     <article class="stat-widget admin-user-summary-card">
-      <span class="stat-widget__icon">Moderators</span>
+      <span class="stat-widget__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 1 3 5v6c0 5.2 3.8 10 9 11 5.2-1 9-5.8 9-11V5l-9-4Zm-1 14-3.5-3.5L9 10l2 2 4.5-4.5L17 9l-6 6Z"/></svg></span>
       <span class="stat-widget__value"><?= $roleCounts['moderator'] ?></span>
       <span class="stat-widget__label">Review and publishing staff</span>
     </article>
     <article class="stat-widget admin-user-summary-card">
-      <span class="stat-widget__icon">Admins</span>
+      <span class="stat-widget__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 1 3 5v6c0 5.2 3.8 10 9 11 5.2-1 9-5.8 9-11V5l-9-4Zm0 5a2.5 2.5 0 1 1-2.5 2.5A2.5 2.5 0 0 1 12 6Zm0 11a6 6 0 0 1-4.2-1.8C7.8 13.7 10 13 12 13s4.2.7 4.2 2.2A6 6 0 0 1 12 17Z"/></svg></span>
       <span class="stat-widget__value"><?= $roleCounts['admin'] ?></span>
       <span class="stat-widget__label">Full-control accounts</span>
     </article>

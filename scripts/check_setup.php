@@ -3,10 +3,18 @@
  * CLI: php scripts/check_setup.php
  * Quick environment check for running EcoTrack on a new laptop.
  */
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit;
+}
+
 require_once __DIR__ . '/../database/db.php';
 
 $projectRoot = realpath(__DIR__ . '/..') ?: dirname(__DIR__);
-$uploadDir = $projectRoot . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'evidence';
+$uploadDirs = [
+    $projectRoot . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'evidence',
+    $projectRoot . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'avatars',
+];
 
 function printResult(bool $ok, string $label, string $detail = ''): void
 {
@@ -68,12 +76,14 @@ $pdoMysqlOk = extension_loaded('pdo_mysql');
 printResult($pdoMysqlOk, 'PHP extension pdo_mysql');
 $allGood = $allGood && $pdoMysqlOk;
 
-if (!is_dir($uploadDir)) {
-    @mkdir($uploadDir, 0777, true);
+foreach ($uploadDirs as $uploadDir) {
+    if (!is_dir($uploadDir)) {
+        @mkdir($uploadDir, 0755, true);
+    }
+    $uploadOk = is_dir($uploadDir) && is_writable($uploadDir);
+    printResult($uploadOk, 'Upload folder', $uploadDir);
+    $allGood = $allGood && $uploadOk;
 }
-$uploadOk = is_dir($uploadDir) && is_writable($uploadDir);
-printResult($uploadOk, 'Upload folder', $uploadDir);
-$allGood = $allGood && $uploadOk;
 
 $databaseName = null;
 $dbErrors = [];
@@ -89,8 +99,8 @@ if ($pdo instanceof PDO) {
              FROM information_schema.tables
              WHERE table_schema = DATABASE()"
         )->fetchColumn();
-        printResult($tables >= 10, 'Database tables found', (string)$tables);
-        $allGood = $allGood && ($tables >= 10);
+        printResult($tables >= 15, 'Database tables found', $tables . ' of 15 (run: php scripts/migrate.php)');
+        $allGood = $allGood && ($tables >= 15);
     } catch (Throwable $e) {
         printResult(false, 'Database tables found', $e->getMessage());
         $allGood = false;
@@ -125,5 +135,6 @@ if ($allGood) {
 }
 
 echo "Some checks failed. Fix the failed item(s) above, then run:" . PHP_EOL;
+echo "php scripts/migrate.php" . PHP_EOL;
 echo "php scripts/check_setup.php" . PHP_EOL;
 exit(1);

@@ -7,16 +7,13 @@ requireRole('participant');
 
 $pdo = getPDO();
 $uid = currentUserId();
-$user = getUserById($uid);
-$err = '';
-$ok = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
     $rid = (int)($_POST['reward_id'] ?? 0);
 
     if ($rid <= 0) {
-        $err = 'Invalid reward.';
+        setFlash('error', 'Invalid reward.');
     } else {
         $pdo->beginTransaction();
         try {
@@ -30,16 +27,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if (!$userRow) {
                 $pdo->rollBack();
-                $err = 'User account not found.';
+                setFlash('error', 'User account not found.');
             } elseif (!$reward) {
                 $pdo->rollBack();
-                $err = 'Reward not available.';
+                setFlash('error', 'Reward not available.');
             } elseif ((int)$reward['stock'] < 1) {
                 $pdo->rollBack();
-                $err = 'Out of stock.';
+                setFlash('error', 'Out of stock.');
             } elseif ((int)$userRow['points'] < (int)$reward['point_cost']) {
                 $pdo->rollBack();
-                $err = 'Not enough points.';
+                setFlash('error', 'Not enough points.');
             } else {
                 $cost = (int)$reward['point_cost'];
                 $updateStock = $pdo->prepare('UPDATE rewards SET stock = stock - 1 WHERE reward_id = ? AND stock > 0');
@@ -47,24 +44,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($updateStock->rowCount() !== 1) {
                     $pdo->rollBack();
-                    $err = 'Could not complete redemption.';
+                    setFlash('error', 'Could not complete redemption.');
                 } else {
                     $pdo->prepare(
                         'INSERT INTO redemptions (user_id, reward_id, points_spent) VALUES (?, ?, ?)'
                     )->execute([$uid, $rid, $cost]);
                     $redemptionId = (int)$pdo->lastInsertId();
-                    awardPoints($uid, -$cost, 'Redeemed: ' . $reward['name'], $redemptionId);
-                    $pdo->commit();
-                    $ok = 'Redeemed: ' . $reward['name'] . '.';
-                    $user = getUserById($uid);
+
+                    if (!awardPoints($uid, -$cost, 'Redeemed: ' . $reward['name'], $redemptionId)) {
+                        $pdo->rollBack();
+                        setFlash('error', 'Not enough points.');
+                    } else {
+                        $pdo->commit();
+                        refreshSessionPoints();
+                        setFlash('success', 'Redeemed: ' . $reward['name'] . '.');
+                    }
                 }
             }
         } catch (Throwable $e) {
-            $pdo->rollBack();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             throw $e;
         }
     }
+
+    // Redirect so refreshing the page cannot redeem a second time. Keep the
+    // current filter/search so the user lands back where they were.
+    redirectToSelf($_SERVER['QUERY_STRING'] ?? '');
 }
+
+$flash = takeFlash();
+$user = getUserById($uid);
 
 $categoryFilter = trim($_GET['category'] ?? '');
 $searchQuery = trim($_GET['q'] ?? '');
@@ -118,8 +129,12 @@ require_once __DIR__ . '/../layout/header.php';
     </div>
   </div>
 
-  <?php if ($err): ?><div class="flash-message flash-error" role="alert"><?= sanitise($err) ?></div><?php endif; ?>
-  <?php if ($ok): ?><div class="flash-message flash-success" role="status"><?= sanitise($ok) ?></div><?php endif; ?>
+  <?php foreach ($flash['error'] as $message): ?>
+    <div class="flash-message flash-error" role="alert"><?= sanitise($message) ?></div>
+  <?php endforeach; ?>
+  <?php foreach ($flash['success'] as $message): ?>
+    <div class="flash-message flash-success" role="status"><?= sanitise($message) ?></div>
+  <?php endforeach; ?>
 
   <div class="card shop-filter-card" style="margin-bottom:var(--space-4);">
     <form method="GET" class="shop-filter-form">

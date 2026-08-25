@@ -6,8 +6,8 @@
  *   1. Hamburger nav toggle (mobile)
  *   2. Client-side form validation (register, login, log_activity)
  *   3. Toast notifications
- *   4. Flash message auto-dismiss
- *   5. Active nav link highlight
+ *   4. Flash message handling
+ *   5. Moderation guard (reject needs a reason)
  */
 
 'use strict';
@@ -20,27 +20,45 @@
   const menu = document.getElementById('navMenu');
   if (!btn || !menu) return;
 
+  // One close path used by every trigger, so the button icon and the menu
+  // can never end up in different states.
+  function closeMenu(returnFocus) {
+    if (!menu.classList.contains('nav-menu--open')) return;
+    menu.classList.remove('nav-menu--open');
+    btn.classList.remove('hamburger--open');
+    btn.setAttribute('aria-expanded', 'false');
+    if (returnFocus) btn.focus();
+  }
+
+  function openMenu() {
+    menu.classList.add('nav-menu--open');
+    btn.classList.add('hamburger--open');
+    btn.setAttribute('aria-expanded', 'true');
+  }
+
   btn.addEventListener('click', () => {
-    const isOpen = menu.classList.toggle('nav-menu--open');
-    btn.setAttribute('aria-expanded', isOpen);
-    btn.classList.toggle('hamburger--open', isOpen);
+    if (menu.classList.contains('nav-menu--open')) {
+      closeMenu(false);
+    } else {
+      openMenu();
+    }
   });
 
   // Close on outside click
   document.addEventListener('click', (e) => {
     if (!btn.contains(e.target) && !menu.contains(e.target)) {
-      menu.classList.remove('nav-menu--open');
-      btn.setAttribute('aria-expanded', 'false');
-      btn.classList.remove('hamburger--open');
+      closeMenu(false);
     }
   });
 
-  // Close on Escape
+  // Close on Escape and hand focus back to the toggle
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      menu.classList.remove('nav-menu--open');
-      btn.setAttribute('aria-expanded', 'false');
-    }
+    if (e.key === 'Escape') closeMenu(true);
+  });
+
+  // Following a link closes the menu behind you
+  menu.addEventListener('click', (e) => {
+    if (e.target.closest('a')) closeMenu(false);
   });
 })();
 
@@ -57,6 +75,7 @@ function showFieldError(fieldId, message) {
   const field = document.getElementById(fieldId);
   if (!field) return;
   field.classList.add('input--error');
+  field.setAttribute('aria-invalid', 'true');
   let errEl = document.getElementById(fieldId + '_err');
   if (!errEl) {
     errEl = document.createElement('span');
@@ -73,9 +92,18 @@ function showFieldError(fieldId, message) {
  */
 function clearFieldError(fieldId) {
   const field = document.getElementById(fieldId);
-  if (field) field.classList.remove('input--error');
+  if (field) {
+    field.classList.remove('input--error');
+    field.removeAttribute('aria-invalid');
+  }
   const errEl = document.getElementById(fieldId + '_err');
   if (errEl) errEl.textContent = '';
+}
+
+/** Move focus to the first field that failed, so the user lands on the problem. */
+function focusFirstError() {
+  const first = document.querySelector('.input--error');
+  if (first) first.focus();
 }
 
 /**
@@ -93,7 +121,7 @@ function validateRegister() {
   const confirm  = document.getElementById('confirm_password')?.value ?? '';
 
   if (username.length < 3 || username.length > 50) {
-    showFieldError('username', 'Username must be 3–50 characters.');
+    showFieldError('username', 'Username must be 3-50 characters.');
     valid = false;
   } else if (!/^[a-zA-Z0-9_]+$/.test(username)) {
     showFieldError('username', 'Only letters, numbers and underscores allowed.');
@@ -118,6 +146,7 @@ function validateRegister() {
     valid = false;
   }
 
+  if (!valid) focusFirstError();
   return valid;
 }
 
@@ -133,36 +162,44 @@ function validateLogin() {
   const password = document.getElementById('password')?.value ?? '';
 
   if (!email) {
-    showFieldError('email', 'Email is required.');
+    showFieldError('email', 'Enter your email address or username.');
     valid = false;
   }
   if (!password) {
-    showFieldError('password', 'Password is required.');
+    showFieldError('password', 'Enter your password.');
     valid = false;
   }
 
+  if (!valid) focusFirstError();
   return valid;
 }
 
 /**
  * Validate the Log Activity form.
+ *
+ * The minimum length comes from the field's data-minlength attribute, which
+ * PHP renders from the same constant it validates against — so the two checks
+ * cannot drift apart.
  */
 function validateLogActivity() {
   let valid = true;
   ['cat_id', 'description'].forEach(f => clearFieldError(f));
 
+  const descField = document.getElementById('description');
   const cat  = document.getElementById('cat_id')?.value ?? '';
-  const desc = document.getElementById('description')?.value.trim() ?? '';
+  const desc = descField?.value.trim() ?? '';
+  const min  = parseInt(descField?.dataset.minlength ?? '10', 10);
 
   if (!cat) {
     showFieldError('cat_id', 'Please select a category.');
     valid = false;
   }
-  if (desc.length < 10) {
-    showFieldError('description', 'Description must be at least 10 characters.');
+  if (desc.length < min) {
+    showFieldError('description', `Description must be at least ${min} characters.`);
     valid = false;
   }
 
+  if (!valid) focusFirstError();
   return valid;
 }
 
@@ -198,7 +235,16 @@ function initEvidencePreview() {
 
     if (!file.type.startsWith('image/')) {
       resetPreview();
+      input.value = '';
       showToast('Please choose an image file for evidence.', 'error');
+      return;
+    }
+
+    // Matches the 5 MB server limit, so the user finds out before uploading.
+    if (file.size > 5 * 1024 * 1024) {
+      resetPreview();
+      input.value = '';
+      showToast('That image is over the 5 MB limit.', 'error');
       return;
     }
 
@@ -208,8 +254,26 @@ function initEvidencePreview() {
 
     currentObjectUrl = URL.createObjectURL(file);
     image.src = currentObjectUrl;
-    meta.textContent = `${file.name} • ${(file.size / 1024 / 1024).toFixed(2)} MB`;
+    meta.textContent = `${file.name} - ${(file.size / 1024 / 1024).toFixed(2)} MB`;
     preview.hidden = false;
+  });
+}
+
+/**
+ * A rejection without a reason leaves the participant with nothing to act on,
+ * so require the note before the form submits.
+ */
+function initModerationGuards() {
+  document.querySelectorAll('[data-requires-note]').forEach(button => {
+    button.addEventListener('click', (e) => {
+      const field = document.getElementById(button.dataset.requiresNote);
+      if (field && field.value.trim() === '') {
+        e.preventDefault();
+        field.classList.add('input--error');
+        field.focus();
+        showToast('Add a short reason so the participant knows what to fix.', 'error');
+      }
+    });
   });
 }
 
@@ -231,6 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   initEvidencePreview();
+  initModerationGuards();
 });
 
 /* ═══════════════════════════════════════════════════════════
@@ -258,28 +323,36 @@ function showToast(message, type = 'info') {
   container.appendChild(toast);
   toast.classList.add('toast--show');
 
-  // Auto dismiss after 4 s
   setTimeout(() => {
     toast.remove();
   }, 4000);
 }
 
 /* ═══════════════════════════════════════════════════════════
- *  5. FLASH MESSAGE AUTO-DISMISS
+ *  4. FLASH MESSAGES
+ *
+ *  Success messages fade on their own. Errors stay until dismissed —
+ *  removing an explanation on a timer just makes the user retry blind.
  * ═══════════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.flash-message').forEach(el => {
-    setTimeout(() => {
-      el.remove();
-    }, 5000);
-  });
+    const isError = el.classList.contains('flash-error');
 
-  // Highlight active nav link
-  const currentPath = window.location.pathname;
-  document.querySelectorAll('.nav-menu a').forEach(link => {
-    if (link.getAttribute('href') && currentPath.endsWith(link.getAttribute('href').split('/').pop())) {
-      link.classList.add('nav-link--active');
-      link.setAttribute('aria-current', 'page');
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.className = 'flash-message__dismiss';
+    dismiss.setAttribute('aria-label', 'Dismiss message');
+    dismiss.innerHTML = '&times;';
+    dismiss.addEventListener('click', () => {
+      // Collapse rather than yanking it out, so the page does not jump.
+      el.style.height = el.offsetHeight + 'px';
+      el.classList.add('flash-message--closing');
+      setTimeout(() => el.remove(), 200);
+    });
+    el.appendChild(dismiss);
+
+    if (!isError) {
+      setTimeout(() => dismiss.click(), 5000);
     }
   });
 });

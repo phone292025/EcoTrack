@@ -15,8 +15,6 @@ $rewardForm = [
     'stock' => '0',
     'active' => '1',
 ];
-$err = '';
-$ok = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
@@ -40,20 +38,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $active = $rewardForm['active'] === '1' ? 1 : 0;
 
         if (strlen($name) < 3) {
-            $err = 'Reward name must be at least 3 characters.';
+            setFlash('error', 'Reward name must be at least 3 characters.');
         } elseif (!in_array($category, $rewardCategories, true)) {
-            $err = 'Please choose a valid reward category.';
+            setFlash('error', 'Please choose a valid reward category.');
         } elseif ($pointCost < 1) {
-            $err = 'Point cost must be at least 1.';
+            setFlash('error', 'Point cost must be at least 1.');
         } elseif ($stock < 0) {
-            $err = 'Stock cannot be negative.';
+            setFlash('error', 'Stock cannot be negative.');
         } else {
             $pdo->prepare(
                 'INSERT INTO rewards (name, description, image, category, point_cost, stock, active)
                  VALUES (?, ?, NULL, ?, ?, ?, ?)'
             )->execute([$name, $description, $category, $pointCost, $stock, $active]);
 
-            $ok = 'Reward added to the catalogue.';
+            setFlash('success', 'Reward added to the catalogue.');
             $rewardForm = [
                 'name' => '',
                 'description' => '',
@@ -73,15 +71,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $active = isset($_POST['active']) ? 1 : 0;
 
         if ($rewardId <= 0) {
-            $err = 'Invalid reward selected.';
+            setFlash('error', 'Invalid reward selected.');
         } elseif (strlen($name) < 3) {
-            $err = 'Reward name must be at least 3 characters.';
+            setFlash('error', 'Reward name must be at least 3 characters.');
         } elseif (!in_array($category, $rewardCategories, true)) {
-            $err = 'Please choose a valid reward category.';
+            setFlash('error', 'Please choose a valid reward category.');
         } elseif ($pointCost < 1) {
-            $err = 'Point cost must be at least 1.';
+            setFlash('error', 'Point cost must be at least 1.');
         } elseif ($stock < 0) {
-            $err = 'Stock cannot be negative.';
+            setFlash('error', 'Stock cannot be negative.');
         } else {
             $pdo->prepare(
                 'UPDATE rewards
@@ -89,17 +87,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  WHERE reward_id = ?'
             )->execute([$name, $description, $category, $pointCost, $stock, $active, $rewardId]);
 
-            $ok = 'Reward updated successfully.';
+            setFlash('success', 'Reward updated successfully.');
         }
     } elseif ($action === 'delete') {
         $rewardId = (int)($_POST['reward_id'] ?? 0);
         if ($rewardId > 0) {
             $pdo->prepare('DELETE FROM rewards WHERE reward_id = ?')->execute([$rewardId]);
-            $ok = 'Reward removed from the catalogue.';
+            setFlash('success', 'Reward removed from the catalogue.');
         } else {
-            $err = 'Invalid reward selected.';
+            setFlash('error', 'Invalid reward selected.');
         }
     }
+
+    setFormOld($rewardForm);
+
+    // Redirect so refreshing cannot repeat the submission.
+    redirectToSelf($_SERVER['QUERY_STRING'] ?? '');
+}
+
+$flash = takeFlash();
+$old = takeFormOld();
+if ($old) {
+    $rewardForm = array_merge($rewardForm, $old);
 }
 
 $list = $pdo->query('SELECT * FROM rewards ORDER BY active DESC, point_cost ASC, reward_id ASC')->fetchAll() ?: [];
@@ -183,8 +192,12 @@ require_once __DIR__ . '/../layout/header.php';
     </article>
   </section>
 
-  <?php if ($err): ?><div class="flash-message flash-error" role="alert"><?= sanitise($err) ?></div><?php endif; ?>
-  <?php if ($ok): ?><div class="flash-message flash-success" role="status"><?= sanitise($ok) ?></div><?php endif; ?>
+  <?php foreach ($flash['error'] as $flashMessage): ?>
+    <div class="flash-message flash-error" role="alert"><?= sanitise($flashMessage) ?></div>
+  <?php endforeach; ?>
+  <?php foreach ($flash['success'] as $flashMessage): ?>
+    <div class="flash-message flash-success" role="status"><?= sanitise($flashMessage) ?></div>
+  <?php endforeach; ?>
 
   <section class="card reward-admin-studio">
       <div class="reward-admin-studio-layout">

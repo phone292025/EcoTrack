@@ -1,9 +1,11 @@
 # Local machine configuration
 database/db.local.php
 
-# Uploaded user evidence files
+# Uploaded user files (keep the folders and their hardening rules)
 uploads/evidence/*
 !uploads/evidence/.htaccess
+uploads/avatars/*
+!uploads/avatars/.htaccess
 
 # Temporary and backup files
 backups/

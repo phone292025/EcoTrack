@@ -6,8 +6,6 @@ require_once __DIR__ . '/../includes/functions.php';
 requireRole('moderator', 'admin');
 
 $pdo = getPDO();
-$err = '';
-$ok = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
@@ -16,25 +14,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'delete') {
         $tipId = (int)($_POST['tip_id'] ?? 0);
         if (!in_array(currentRole(), ['moderator', 'admin'], true)) {
-            $err = 'Only moderators and admins can delete eco tips.';
+            setFlash('error', 'Only moderators and admins can delete eco tips.');
         } elseif ($tipId <= 0) {
-            $err = 'Invalid eco tip selected.';
+            setFlash('error', 'Invalid eco tip selected.');
         } else {
             $stmt = $pdo->prepare('DELETE FROM eco_tips WHERE tip_id = ?');
             $stmt->execute([$tipId]);
-            $ok = $stmt->rowCount() > 0 ? 'Tip deleted.' : 'Eco tip not found.';
+            setFlash('success', $stmt->rowCount() > 0 ? 'Tip deleted.' : 'Eco tip not found.');
         }
     } else {
         $title = trim($_POST['tip_title'] ?? '');
         $body = trim($_POST['tip_body'] ?? '');
-        if (strlen($title) >= 2) {
+        if (strlen($title) < 2) {
+            setFlash('error', 'Give the tip a title of at least 2 characters.');
+            setFormOld(['tip_title' => $title, 'tip_body' => $body]);
+        } else {
             $pdo->prepare(
                 'INSERT INTO eco_tips (title, body, created_by) VALUES (?, ?, ?)'
             )->execute([$title, $body, currentUserId()]);
-            $ok = 'Tip published.';
+            setFlash('success', 'Tip published.');
         }
     }
+
+    // Redirect so refreshing cannot repeat the submission.
+    redirectToSelf($_SERVER['QUERY_STRING'] ?? '');
 }
+
+$flash = takeFlash();
 
 $list = $pdo->query(
     'SELECT t.*, u.username FROM eco_tips t LEFT JOIN users u ON u.user_id = t.created_by ORDER BY t.created_at DESC'
@@ -52,8 +58,12 @@ require_once __DIR__ . '/../layout/header.php';
     <span class="badge badge-blue"><?= count($list) ?> tip<?= count($list) === 1 ? '' : 's' ?></span>
   </div>
 
-  <?php if ($err): ?><div class="flash-message flash-error" role="alert"><?= sanitise($err) ?></div><?php endif; ?>
-  <?php if ($ok): ?><div class="flash-message flash-success"><?= sanitise($ok) ?></div><?php endif; ?>
+  <?php foreach ($flash['error'] as $flashMessage): ?>
+    <div class="flash-message flash-error" role="alert"><?= sanitise($flashMessage) ?></div>
+  <?php endforeach; ?>
+  <?php foreach ($flash['success'] as $flashMessage): ?>
+    <div class="flash-message flash-success" role="status"><?= sanitise($flashMessage) ?></div>
+  <?php endforeach; ?>
 
   <div class="card" style="margin-bottom:var(--space-4);">
     <h2 class="card-title">Add tip</h2>

@@ -11,3 +11,10 @@
 // define('DB_USER', 'root');
 // define('DB_PASS', 'your_mysql_password_here');
 // define('DB_CHARSET', 'utf8mb4');
+
+/**
+ * DEMO_MODE shows the admin and moderator demo logins on the login page.
+ * Leave it on while the project is being marked or demonstrated.
+ * Set it to false for any other deployment.
+ */
+// define('DEMO_MODE', false);

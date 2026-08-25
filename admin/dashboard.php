@@ -188,21 +188,21 @@ require_once __DIR__ . '/../layout/header.php';
 
   <div class="dashboard-grid admin-dashboard-kpis admin-dashboard-kpis--main">
     <article class="stat-widget admin-kpi-card">
-      <span class="stat-widget__icon">Users</span>
+      <span class="stat-widget__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-8 1a3.5 3.5 0 1 0-3.5-3.5A3.5 3.5 0 0 0 8 12Zm0 2c-2.7 0-6 1.3-6 4v3h9v-3c0-1.1.5-2.1 1.3-2.9A10 10 0 0 0 8 14Zm8 0c-3 0-7 1.5-7 4.2V21h14v-2.8C23 15.5 19 14 16 14Z"/></svg></span>
       <span class="stat-widget__value"><?= $userCount ?></span>
       <span class="stat-widget__label">Accounts across all roles</span>
       <span class="admin-kpi-card__detail"><?= $participantCount ?> participants / <?= $moderatorCount ?> moderators / <?= $adminCount ?> admins</span>
     </article>
 
     <article class="stat-widget stat-widget--accent admin-kpi-card">
-      <span class="stat-widget__icon">CO2</span>
+      <span class="stat-widget__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M4 19h16v2H4v-2Zm1-4 4.5-5.5 3 3.5L16 8l4 7H5Z"/></svg></span>
       <span class="stat-widget__value stat-widget__value--wrap"><?= number_format($platformCo2Kg, 2) ?> kg</span>
       <span class="stat-widget__label">Platform carbon savings</span>
       <span class="admin-kpi-card__detail">Calculated from approved activities only</span>
     </article>
 
     <article class="stat-widget admin-kpi-card">
-      <span class="stat-widget__icon">Review</span>
+      <span class="stat-widget__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M4 3h16v2H4V3Zm0 4h16v2H4V7Zm0 4h10v2H4v-2Zm0 4h10v2H4v-2Zm12.5 5L13 16.5l1.4-1.4 2.1 2.1 4.1-4.1L22 14.5 16.5 20Z"/></svg></span>
       <span class="stat-widget__value"><?= $pendingCount + $flaggedCount ?></span>
       <span class="stat-widget__label">Items in moderation queue</span>
       <span class="admin-kpi-card__detail"><?= $flaggedCount ?> flagged / <?= $pendingCount ?> pending</span>

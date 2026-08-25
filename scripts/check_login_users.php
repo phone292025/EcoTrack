@@ -3,6 +3,11 @@
  * CLI: php scripts/check_login_users.php
  * Verifies seeded admin/moderator rows and password hashes.
  */
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit;
+}
+
 require_once __DIR__ . '/../database/db.php';
 
 $pdo = getPDO();
@@ -14,7 +19,7 @@ $expect = [
 
 foreach ($emails as $email) {
     $stmt = $pdo->prepare(
-        'SELECT user_id, username, email, LENGTH(password) AS pwlen, password
+        'SELECT user_id, username, email, password
          FROM users
          WHERE email = ?'
     );
@@ -27,14 +32,13 @@ foreach ($emails as $email) {
         continue;
     }
 
-    echo "  user_id={$row['user_id']} username={$row['username']} pwlen={$row['pwlen']}\n";
+    echo "  user_id={$row['user_id']} username={$row['username']}\n";
     $hash = $row['password'];
     $pw = $expect[$email];
     $ok = password_verify($pw, $hash);
-    echo "  password_verify('{$pw}', stored_hash): " . ($ok ? "OK\n" : "FAIL\n");
-    if (!$ok) {
-        echo "  hash prefix: " . substr($hash, 0, 30) . "...\n";
-    }
+    // Never print the hash or its length — that is material for an attacker
+    // and the pass/fail result is all this check actually needs to report.
+    echo "  seeded password verifies: " . ($ok ? "OK\n" : "FAIL\n");
     echo "\n";
 }
 

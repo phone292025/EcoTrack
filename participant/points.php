@@ -9,19 +9,15 @@ $uid = currentUserId();
 $user = getUserById($uid);
 $history = getPointsHistory($uid, 100);
 $categoryData = getCategoryBreakdown($uid);
-$earnedTotal = 0;
-$spentTotal = 0;
 
-foreach ($history as $row) {
-    $delta = (int)$row['delta'];
-    if ($delta >= 0) {
-        $earnedTotal += $delta;
-    } else {
-        $spentTotal += abs($delta);
-    }
-}
+// Lifetime totals come from the whole ledger, not just the page of history
+// shown below — otherwise they stop growing past the display limit.
+$totals = getPointsTotals($uid);
+$earnedTotal = $totals['earned'];
+$spentTotal = $totals['spent'];
 
 $pageTitle = 'Points';
+$needsCharts = true;
 require_once __DIR__ . '/../layout/header.php';
 ?>
 
@@ -35,17 +31,17 @@ require_once __DIR__ . '/../layout/header.php';
 
   <div class="dashboard-grid points-summary-grid">
     <div class="stat-widget points-stat-widget">
-      <span class="stat-widget__icon">Now</span>
+      <span class="stat-widget__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm1 10.6 4 2.3-1 1.7-5-2.9V6h2Z"/></svg></span>
       <span class="stat-widget__value"><?= (int)($user['points'] ?? 0) ?></span>
       <span class="stat-widget__label">Current balance</span>
     </div>
     <div class="stat-widget stat-widget--accent points-stat-widget">
-      <span class="stat-widget__icon">Earned</span>
+      <span class="stat-widget__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 4l7 7h-4v9h-6v-9H5l7-7Z"/></svg></span>
       <span class="stat-widget__value"><?= $earnedTotal ?></span>
       <span class="stat-widget__label">Total earned</span>
     </div>
     <div class="stat-widget stat-widget--info points-stat-widget">
-      <span class="stat-widget__icon">Spent</span>
+      <span class="stat-widget__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 20l-7-7h4V4h6v9h4l-7 7Z"/></svg></span>
       <span class="stat-widget__value"><?= $spentTotal ?></span>
       <span class="stat-widget__label">Total spent</span>
     </div>

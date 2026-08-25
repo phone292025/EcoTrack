@@ -5,18 +5,11 @@
  *
  * Requires: database/db.php  (getPDO())
  *
- * Functions in this file:
- *   awardPoints()            — credit/debit points + log ledger
- *   updateStreak()           — increment or reset daily streak
- *   checkAndAwardBadges()    — evaluate all badge criteria for a user
- *   getUserGoalProgress()    — current goal + % complete
- *   getLeaderboard()         — ranked list of participants
- *   getCategoryBreakdown()   — points per category (for donut chart)
- *   getCO2Savings()          — cumulative CO2 data points (for line chart)
- *   getEcoImpactSummary()    — human-readable impact stats
- *   sanitise()               — XSS-safe output helper
- *   handleFileUpload()       — secure evidence file upload
- *   jsonResponse()           — standardised AJAX JSON output
+ * Reading vs writing
+ * ------------------
+ * Functions named get*() only read. Anything that awards points, badges or
+ * challenge completions is a write, is named with an apply/award/record
+ * prefix, and is only ever called from a POST handler — never from a render.
  */
 
 require_once __DIR__ . '/../database/db.php';
@@ -36,53 +29,128 @@ function sanitise(mixed $value): string
 
 /**
  * Terminate with a JSON response (for AJAX endpoints).
+ *
  * @param bool  $success
  * @param array $data    Extra key-value pairs merged into response
+ * @param int   $status  HTTP status code
  */
-function jsonResponse(bool $success, array $data = []): never
+function jsonResponse(bool $success, array $data = [], int $status = 200): never
 {
+    http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode(array_merge(['success' => $success], $data));
     exit;
 }
 
+/**
+ * Evenly spaced colours for however many chart slices exist, so adding a
+ * category can never leave a slice uncoloured.
+ */
+function chartColors(int $count): array
+{
+    $preset = ['#2d936c', '#f4a261', '#457b9d', '#7b5ea7', '#e07c30', '#3aa17e'];
+
+    if ($count <= count($preset)) {
+        return array_slice($preset, 0, max(0, $count));
+    }
+
+    $colors = $preset;
+    for ($i = count($preset); $i < $count; $i++) {
+        $hue = (int)round(($i * 360) / $count);
+        $colors[] = sprintf('hsl(%d, 45%%, 45%%)', $hue);
+    }
+
+    return $colors;
+}
+
 /* =============================================================
  *  POINTS LEDGER
+ *
+ *  points_transactions is authoritative. users.points is a cached running
+ *  total of it, and the two are always written together in one transaction
+ *  so they cannot drift apart.
  * ============================================================*/
 
 /**
  * Award (positive delta) or deduct (negative delta) points.
- * Updates users.points and appends to points_transactions.
  *
- * @param int    $userId
- * @param int    $delta    Positive to add, negative to deduct
- * @param string $reason   Human-readable reason stored in ledger
- * @param int|null $refId  Optional FK reference (log_id, redemption_id…)
+ * A deduction that would take the balance below zero is rejected rather than
+ * silently clamped, because clamping the balance while writing the full delta
+ * to the ledger is exactly what makes the two disagree.
+ *
+ * @param  int      $userId
+ * @param  int      $delta   Positive to add, negative to deduct
+ * @param  string   $reason  Human-readable reason stored in ledger
+ * @param  int|null $refId   Optional FK reference (log_id, redemption_id…)
+ * @return bool              False when the balance is too low to deduct
  */
-function awardPoints(int $userId, int $delta, string $reason, ?int $refId = null): void
+function awardPoints(int $userId, int $delta, string $reason, ?int $refId = null): bool
 {
     $pdo = getPDO();
 
-    // Update user balance
-    $stmt = $pdo->prepare(
-        'UPDATE users SET points = GREATEST(0, points + :delta) WHERE user_id = :uid'
-    );
-    $stmt->execute([':delta' => $delta, ':uid' => $userId]);
+    if ($delta === 0) {
+        return true;
+    }
 
-    // Append ledger entry
-    $stmt = $pdo->prepare(
-        'INSERT INTO points_transactions (user_id, delta, reason, ref_id)
-         VALUES (:uid, :delta, :reason, :ref)'
-    );
-    $stmt->execute([
-        ':uid'    => $userId,
-        ':delta'  => $delta,
-        ':reason' => $reason,
-        ':ref'    => $refId,
-    ]);
+    // Join an outer transaction when one is already open so the caller keeps
+    // control of the commit boundary.
+    $ownTransaction = !$pdo->inTransaction();
+    if ($ownTransaction) {
+        $pdo->beginTransaction();
+    }
 
-    // Check badges after every points change
-    checkAndAwardBadges($userId);
+    try {
+        $stmt = $pdo->prepare('SELECT points FROM users WHERE user_id = ? FOR UPDATE');
+        $stmt->execute([$userId]);
+        $current = $stmt->fetchColumn();
+
+        if ($current === false) {
+            if ($ownTransaction) {
+                $pdo->rollBack();
+            }
+            return false;
+        }
+
+        $newBalance = (int)$current + $delta;
+
+        if ($newBalance < 0) {
+            if ($ownTransaction) {
+                $pdo->rollBack();
+            }
+            return false;
+        }
+
+        $pdo->prepare('UPDATE users SET points = ? WHERE user_id = ?')
+            ->execute([$newBalance, $userId]);
+
+        $pdo->prepare(
+            'INSERT INTO points_transactions (user_id, delta, reason, ref_id)
+             VALUES (:uid, :delta, :reason, :ref)'
+        )->execute([
+            ':uid'    => $userId,
+            ':delta'  => $delta,
+            ':reason' => $reason,
+            ':ref'    => $refId,
+        ]);
+
+        checkAndAwardBadges($userId);
+
+        if ($ownTransaction) {
+            $pdo->commit();
+        }
+
+        // Keep the cached badge in the navigation honest.
+        if (function_exists('currentUserId') && $userId === currentUserId()) {
+            $_SESSION['points'] = $newBalance;
+        }
+
+        return true;
+    } catch (Throwable $e) {
+        if ($ownTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
 }
 
 /* =============================================================
@@ -90,49 +158,92 @@ function awardPoints(int $userId, int $delta, string $reason, ?int $refId = null
  * ============================================================*/
 
 /**
- * Call after any approved activity log or check-in.
- * Increments streak if last activity was yesterday;
- * resets to 1 if there was a gap.
- * Awards bonus points at 3-day (5pts) and 7-day (15pts) milestones.
+ * Rebuild the streak from the dates the participant was actually active,
+ * rather than incrementing a counter whenever a moderator happens to click
+ * approve. Counts a day as active if it has an approved activity log or a
+ * daily check-in.
+ *
+ * The streak stays alive if the most recent active day is today or
+ * yesterday; any longer gap resets it to zero.
+ *
+ * @return int The recalculated streak
  */
-function updateStreak(int $userId): void
+function recalculateStreak(int $userId): int
 {
-    $pdo  = getPDO();
-    $stmt = $pdo->prepare('SELECT streak, last_checkin FROM users WHERE user_id = :uid');
-    $stmt->execute([':uid' => $userId]);
-    $user = $stmt->fetch();
-
-    if (!$user) return;
-
-    $today     = new DateTimeImmutable('today');
-    $lastDate  = $user['last_checkin'] ? new DateTimeImmutable($user['last_checkin']) : null;
-    $newStreak = 1;
-
-    if ($lastDate !== null) {
-        $diff = (int)$lastDate->diff($today)->days;
-        if ($diff === 0) {
-            // Already checked in today — no change
-            return;
-        } elseif ($diff === 1) {
-            // Consecutive day
-            $newStreak = (int)$user['streak'] + 1;
-        }
-        // else gap > 1 day → reset to 1
-    }
+    $pdo = getPDO();
 
     $stmt = $pdo->prepare(
-        'UPDATE users SET streak = :streak, last_checkin = :today WHERE user_id = :uid'
+        'SELECT DISTINCT active_date FROM (
+             SELECT DATE(created_at) AS active_date
+             FROM activity_logs
+             WHERE user_id = :uid AND status = "approved"
+             UNION
+             SELECT checkin_date AS active_date
+             FROM daily_checkins
+             WHERE user_id = :uid2
+         ) AS days
+         ORDER BY active_date DESC
+         LIMIT 400'
     );
-    $stmt->execute([
-        ':streak' => $newStreak,
-        ':today'  => $today->format('Y-m-d'),
-        ':uid'    => $userId,
-    ]);
+    $stmt->execute([':uid' => $userId, ':uid2' => $userId]);
+    $dates = array_column($stmt->fetchAll(), 'active_date');
 
-    // Streak bonus points
-    if ($newStreak === 3)  awardPoints($userId, 5,  '3-Day Streak Bonus');
-    if ($newStreak === 7)  awardPoints($userId, 15, '7-Day Streak Bonus');
-    if ($newStreak === 30) awardPoints($userId, 50, '30-Day Streak Bonus');
+    $streak = 0;
+    $lastActive = $dates[0] ?? null;
+
+    if ($lastActive !== null) {
+        $today = new DateTimeImmutable('today');
+        $mostRecent = new DateTimeImmutable($lastActive);
+        $gap = (int)$today->diff($mostRecent)->days;
+
+        // Only today or yesterday keeps a streak running.
+        if ($mostRecent <= $today && $gap <= 1) {
+            $expected = $mostRecent;
+            foreach ($dates as $date) {
+                if ($date === $expected->format('Y-m-d')) {
+                    $streak++;
+                    $expected = $expected->modify('-1 day');
+                    continue;
+                }
+                break;
+            }
+        }
+    }
+
+    $pdo->prepare('UPDATE users SET streak = ?, last_checkin = ? WHERE user_id = ?')
+        ->execute([$streak, $lastActive, $userId]);
+
+    return $streak;
+}
+
+/**
+ * Recalculate the streak and pay any milestone bonus not already paid.
+ * Call from write paths only (approval, check-in).
+ */
+function applyStreakBonuses(int $userId): void
+{
+    $streak = recalculateStreak($userId);
+
+    $milestones = [3 => 5, 7 => 15, 30 => 50];
+    if (!isset($milestones[$streak])) {
+        return;
+    }
+
+    $reason = $streak . '-Day Streak Bonus';
+
+    // Bonuses are milestone-based, so pay each one at most once per streak run.
+    $stmt = getPDO()->prepare(
+        'SELECT COUNT(*)
+         FROM points_transactions
+         WHERE user_id = ?
+           AND reason = ?
+           AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)'
+    );
+    $stmt->execute([$userId, $reason, $streak]);
+
+    if ((int)$stmt->fetchColumn() === 0) {
+        awardPoints($userId, $milestones[$streak], $reason);
+    }
 }
 
 /* =============================================================
@@ -145,13 +256,12 @@ function updateStreak(int $userId): void
  *   "points>=N"   — user's total points
  *   "streak>=N"   — current streak
  *   "logs>=N"     — total approved activity logs
- *   "goal_achieved" — handled separately when goal is met
+ *   "goal_achieved" — handled separately when a goal is met
  */
 function checkAndAwardBadges(int $userId): void
 {
     $pdo = getPDO();
 
-    // Get current user stats
     $stmt = $pdo->prepare(
         'SELECT u.points, u.streak,
                 (SELECT COUNT(*) FROM activity_logs
@@ -160,23 +270,33 @@ function checkAndAwardBadges(int $userId): void
     );
     $stmt->execute([':uid' => $userId, ':uid2' => $userId]);
     $stats = $stmt->fetch();
-    if (!$stats) return;
+    if (!$stats) {
+        return;
+    }
 
-    // Badges already earned
+    // Only look at badges this user has not earned yet.
     $stmt = $pdo->prepare(
-        'SELECT badge_id FROM user_badges WHERE user_id = :uid'
+        'SELECT b.badge_id, b.criteria
+         FROM badges b
+         LEFT JOIN user_badges ub ON ub.badge_id = b.badge_id AND ub.user_id = :uid
+         WHERE ub.id IS NULL
+           AND b.criteria IS NOT NULL
+           AND b.criteria <> ""'
     );
     $stmt->execute([':uid' => $userId]);
-    $earned = array_column($stmt->fetchAll(), 'badge_id');
+    $candidates = $stmt->fetchAll();
 
-    // All badges
-    $allBadges = $pdo->query('SELECT * FROM badges')->fetchAll();
+    if (!$candidates) {
+        return;
+    }
 
-    foreach ($allBadges as $badge) {
-        if (in_array($badge['badge_id'], $earned, true)) continue;
+    $insert = $pdo->prepare(
+        'INSERT IGNORE INTO user_badges (user_id, badge_id) VALUES (:uid, :bid)'
+    );
 
-        $criteria = trim($badge['criteria'] ?? '');
-        $award    = false;
+    foreach ($candidates as $badge) {
+        $criteria = trim((string)$badge['criteria']);
+        $award = false;
 
         if (preg_match('/^points>=(\d+)$/', $criteria, $m)) {
             $award = (int)$stats['points'] >= (int)$m[1];
@@ -185,13 +305,10 @@ function checkAndAwardBadges(int $userId): void
         } elseif (preg_match('/^logs>=(\d+)$/', $criteria, $m)) {
             $award = (int)$stats['log_count'] >= (int)$m[1];
         }
-        // "goal_achieved" is triggered manually in goal-check logic
+        // "goal_achieved" is triggered by applyGoalCompletion()
 
         if ($award) {
-            $stmt = $pdo->prepare(
-                'INSERT IGNORE INTO user_badges (user_id, badge_id) VALUES (:uid, :bid)'
-            );
-            $stmt->execute([':uid' => $userId, ':bid' => $badge['badge_id']]);
+            $insert->execute([':uid' => $userId, ':bid' => $badge['badge_id']]);
         }
     }
 }
@@ -201,7 +318,7 @@ function checkAndAwardBadges(int $userId): void
  * ============================================================*/
 
 /**
- * Returns the user's active goal and their progress toward it.
+ * Read the user's active goal and their progress toward it. Read-only.
  *
  * @return array {goal_id, target, period, start_date, end_date,
  *               points_in_period, percent, days_left}
@@ -209,7 +326,7 @@ function checkAndAwardBadges(int $userId): void
  */
 function getUserGoalProgress(int $userId): array
 {
-    $pdo  = getPDO();
+    $pdo = getPDO();
     $today = date('Y-m-d');
 
     $stmt = $pdo->prepare(
@@ -221,9 +338,10 @@ function getUserGoalProgress(int $userId): array
     );
     $stmt->execute([':uid' => $userId, ':today' => $today, ':today2' => $today]);
     $goal = $stmt->fetch();
-    if (!$goal) return [];
+    if (!$goal) {
+        return [];
+    }
 
-    // Points earned in period (approved logs only)
     $stmt = $pdo->prepare(
         'SELECT COALESCE(SUM(t.delta), 0) AS earned
          FROM points_transactions t
@@ -236,34 +354,69 @@ function getUserGoalProgress(int $userId): array
         ':start' => $goal['start_date'] . ' 00:00:00',
         ':end'   => $goal['end_date']   . ' 23:59:59',
     ]);
-    $earned  = (int)$stmt->fetchColumn();
-    $percent = min(100, (int)round(($earned / max(1, $goal['target'])) * 100));
-    $daysLeft= (int)(new DateTimeImmutable($goal['end_date']))
-                    ->diff(new DateTimeImmutable('today'))->days;
+    $earned = (int)$stmt->fetchColumn();
 
-    // Award Goal Crusher badge if newly reached
-    if ($percent >= 100 && !$goal['bonus_awarded']) {
-        $pdo->prepare(
-            'UPDATE goals SET bonus_awarded = 1 WHERE goal_id = :gid'
-        )->execute([':gid' => $goal['goal_id']]);
-
-        // Find "goal_achieved" badge
-        $b = $pdo->query(
-            "SELECT badge_id FROM badges WHERE criteria = 'goal_achieved' LIMIT 1"
-        )->fetch();
-        if ($b) {
-            $pdo->prepare(
-                'INSERT IGNORE INTO user_badges (user_id, badge_id) VALUES (?, ?)'
-            )->execute([$userId, $b['badge_id']]);
-        }
-        awardPoints($userId, 25, 'Goal Achieved Bonus');
-    }
+    $percent  = min(100, (int)round(($earned / max(1, (int)$goal['target'])) * 100));
+    $daysLeft = (int)(new DateTimeImmutable('today'))
+        ->diff(new DateTimeImmutable($goal['end_date']))->days;
 
     return array_merge($goal, [
         'points_in_period' => $earned,
         'percent'          => $percent,
         'days_left'        => $daysLeft,
     ]);
+}
+
+/**
+ * Pay the goal bonus if the active goal has just been met. Write path — call
+ * after something changes the user's points, never during a page render.
+ */
+function applyGoalCompletion(int $userId): void
+{
+    $pdo = getPDO();
+    $goal = getUserGoalProgress($userId);
+
+    if (!$goal || $goal['percent'] < 100 || !empty($goal['bonus_awarded'])) {
+        return;
+    }
+
+    $ownTransaction = !$pdo->inTransaction();
+    if ($ownTransaction) {
+        $pdo->beginTransaction();
+    }
+
+    try {
+        // Re-check under a lock so two concurrent requests cannot both pay out.
+        $stmt = $pdo->prepare('SELECT bonus_awarded FROM goals WHERE goal_id = ? FOR UPDATE');
+        $stmt->execute([(int)$goal['goal_id']]);
+        $alreadyAwarded = (int)$stmt->fetchColumn();
+
+        if ($alreadyAwarded === 0) {
+            $pdo->prepare('UPDATE goals SET bonus_awarded = 1 WHERE goal_id = ?')
+                ->execute([(int)$goal['goal_id']]);
+
+            $badge = $pdo->query(
+                "SELECT badge_id FROM badges WHERE criteria = 'goal_achieved' LIMIT 1"
+            )->fetch();
+
+            if ($badge) {
+                $pdo->prepare(
+                    'INSERT IGNORE INTO user_badges (user_id, badge_id) VALUES (?, ?)'
+                )->execute([$userId, $badge['badge_id']]);
+            }
+
+            awardPoints($userId, 25, 'Goal Achieved Bonus', (int)$goal['goal_id']);
+        }
+
+        if ($ownTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $e) {
+        if ($ownTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
 }
 
 /* =============================================================
@@ -290,10 +443,22 @@ function getLeaderboard(int $limit = 20): array
     $stmt->execute();
     $rows = $stmt->fetchAll();
 
-    // Add rank number
+    // Equal scores share a rank; the next distinct score skips ahead.
+    $rank = 0;
+    $seen = 0;
+    $previousPoints = null;
+
     foreach ($rows as $i => &$row) {
-        $row['rank'] = $i + 1;
+        $seen++;
+        $points = (int)$row['points'];
+        if ($points !== $previousPoints) {
+            $rank = $seen;
+            $previousPoints = $points;
+        }
+        $row['rank'] = $rank;
     }
+    unset($row);
+
     return $rows;
 }
 
@@ -305,7 +470,6 @@ function getLeaderboard(int $limit = 20): array
  * Returns points earned per category by this user (approved logs only).
  *
  * @return array  {labels: [...], data: [...], colors: [...]}
- *                ready to pass directly to Chart.js
  */
 function getCategoryBreakdown(int $userId): array
 {
@@ -325,10 +489,8 @@ function getCategoryBreakdown(int $userId): array
 
     $labels = [];
     $data   = [];
-    // Accessible, eco-themed palette
-    $colors = ['#2d936c', '#f4a261', '#457b9d', '#6d4c41'];
 
-    foreach ($rows as $i => $row) {
+    foreach ($rows as $row) {
         $labels[] = $row['name'];
         $data[]   = (int)$row['total'];
     }
@@ -336,17 +498,35 @@ function getCategoryBreakdown(int $userId): array
     return [
         'labels' => $labels,
         'data'   => $data,
-        'colors' => array_slice($colors, 0, count($labels)),
+        'colors' => chartColors(count($labels)),
     ];
 }
 
 /* =============================================================
- *  CO2 SAVINGS DATA  (for line chart)
+ *  CO2 SAVINGS
+ *
+ *  Every CO2 figure in the application comes from this one weighting:
+ *  a log's points multiplied by its category's co2_per_point rate.
  * ============================================================*/
 
 /**
- * Returns cumulative CO2 savings over time for Chart.js line chart.
- * Uses: 1 point = 0.01 kg CO2 (from category default; weighted average used here).
+ * Total CO2 saved by a user, in kg. The single source for this number.
+ */
+function getUserCo2Kg(int $userId): float
+{
+    $stmt = getPDO()->prepare(
+        'SELECT COALESCE(SUM(al.points * c.co2_per_point), 0)
+         FROM activity_logs al
+         JOIN categories c ON c.cat_id = al.cat_id
+         WHERE al.user_id = :uid AND al.status = "approved"'
+    );
+    $stmt->execute([':uid' => $userId]);
+
+    return (float)$stmt->fetchColumn();
+}
+
+/**
+ * Returns cumulative CO2 savings over time for the Chart.js line chart.
  *
  * @return array {labels: ['2025-01-01',...], data: [0.10, 0.25,...]}
  */
@@ -383,14 +563,14 @@ function getCO2Savings(int $userId): array
  * ============================================================*/
 
 /**
- * Converts total approved points into human-readable impact stats.
+ * Human-readable impact stats. CO2 uses the same category-weighted figure as
+ * the chart, so the tile and the graph beside it always agree.
  *
  * @return array {co2_kg, plastic_bottles, trees_equivalent}
  */
 function getEcoImpactSummary(int $userId): array
 {
-    $pdo  = getPDO();
-    $stmt = $pdo->prepare(
+    $stmt = getPDO()->prepare(
         'SELECT COALESCE(SUM(points), 0) AS total
          FROM activity_logs
          WHERE user_id = :uid AND status = "approved"'
@@ -398,10 +578,12 @@ function getEcoImpactSummary(int $userId): array
     $stmt->execute([':uid' => $userId]);
     $points = (int)$stmt->fetchColumn();
 
+    $co2 = getUserCo2Kg($userId);
+
     return [
-        'co2_kg'           => round($points * 0.01,  2),  // 1 pt = 0.01 kg CO2
-        'plastic_bottles'  => round($points * 0.05,  1),  // 1 pt ≈ 0.05 bottles avoided
-        'trees_equivalent' => round($points / 500,   2),  // 500 pts ≈ 1 tree/year
+        'co2_kg'           => round($co2, 2),
+        'plastic_bottles'  => round($points * 0.05, 1),   // 1 pt ≈ 0.05 bottles avoided
+        'trees_equivalent' => round($co2 / 21, 3),        // ~21 kg CO2 per tree-year
     ];
 }
 
@@ -410,40 +592,64 @@ function getEcoImpactSummary(int $userId): array
  * ============================================================*/
 
 /**
- * Validates and saves an uploaded evidence file.
- * Stores files in: uploads/evidence/<uuid>.<ext>
+ * Validates and saves an uploaded image.
  *
- * @param array  $file   $_FILES['evidence']
- * @return string|null   Stored filename on success, null on failure
+ * @param  array  $file      $_FILES['evidence']
+ * @param  string $subdir    Folder under uploads/ to store in
+ * @return string|null       Stored filename on success, null on failure
  */
-function handleFileUpload(array $file): ?string
+function handleFileUpload(array $file, string $subdir = 'evidence'): ?string
 {
-    if ($file['error'] !== UPLOAD_ERR_OK) return null;
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        return null;
+    }
 
-    $allowedMime = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    $allowedExt  = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-    $maxSize     = 5 * 1024 * 1024; // 5 MB
+    // Extension must agree with the sniffed MIME type, so a .png that is
+    // actually a JPEG cannot slip through with a mismatched name.
+    $mimeToExt = [
+        'image/jpeg' => ['jpg', 'jpeg'],
+        'image/png'  => ['png'],
+        'image/gif'  => ['gif'],
+        'image/webp' => ['webp'],
+    ];
+    $maxSize = 5 * 1024 * 1024; // 5 MB
 
-    // Check file size
-    if ($file['size'] > $maxSize) return null;
+    if (($file['size'] ?? 0) > $maxSize || ($file['size'] ?? 0) <= 0) {
+        return null;
+    }
 
-    // Validate MIME via finfo (not $_FILES['type'] — that is user-supplied)
+    if (!is_uploaded_file($file['tmp_name'])) {
+        return null;
+    }
+
+    // Validate MIME via finfo, never $_FILES['type'] — that is user-supplied.
     $finfo = new finfo(FILEINFO_MIME_TYPE);
     $mime  = $finfo->file($file['tmp_name']);
-    if (!in_array($mime, $allowedMime, true)) return null;
+    if (!isset($mimeToExt[$mime])) {
+        return null;
+    }
 
-    // Validate extension
+    // Confirm it really decodes as an image of that type.
+    if (@getimagesize($file['tmp_name']) === false) {
+        return null;
+    }
+
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    if (!in_array($ext, $allowedExt, true)) return null;
+    if (!in_array($ext, $mimeToExt[$mime], true)) {
+        return null;
+    }
 
-    // Generate a safe random filename
+    $subdir  = preg_replace('/[^a-z0-9_-]/i', '', $subdir) ?: 'evidence';
     $newName = bin2hex(random_bytes(16)) . '.' . $ext;
-    $destDir = __DIR__ . '/../uploads/evidence/';
-    $destPath= $destDir . $newName;
+    $destDir = __DIR__ . '/../uploads/' . $subdir . '/';
 
-    if (!is_dir($destDir)) mkdir($destDir, 0755, true);
+    if (!is_dir($destDir) && !mkdir($destDir, 0755, true) && !is_dir($destDir)) {
+        return null;
+    }
 
-    if (!move_uploaded_file($file['tmp_name'], $destPath)) return null;
+    if (!move_uploaded_file($file['tmp_name'], $destDir . $newName)) {
+        return null;
+    }
 
     return $newName; // Store only filename in DB, never the full path
 }
@@ -459,26 +665,55 @@ function handleFileUpload(array $file): ?string
  */
 function dailyCheckIn(int $userId): bool
 {
-    $pdo  = getPDO();
+    $pdo   = getPDO();
     $today = date('Y-m-d');
 
+    $pdo->beginTransaction();
+
     try {
-        $stmt = $pdo->prepare(
+        $pdo->prepare(
             'INSERT INTO daily_checkins (user_id, checkin_date) VALUES (:uid, :today)'
-        );
-        $stmt->execute([':uid' => $userId, ':today' => $today]);
+        )->execute([':uid' => $userId, ':today' => $today]);
 
-        // Award 5 bonus points
         awardPoints($userId, 5, 'Daily Check-in');
-        updateStreak($userId);
 
-        return true;
-
+        $pdo->commit();
     } catch (PDOException $e) {
-        // Duplicate key = already checked in today
-        if ($e->getCode() === '23000') return false;
-        throw $e; // Re-throw unexpected errors
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        // Duplicate key means they already checked in today.
+        if (isDuplicateKeyError($e)) {
+            return false;
+        }
+        throw $e;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
     }
+
+    // Streak and goal bonuses open their own transactions.
+    applyStreakBonuses($userId);
+    applyGoalCompletion($userId);
+
+    return true;
+}
+
+/**
+ * Has this user already checked in today? Lets the UI render the button in
+ * the right state instead of making the user click to find out.
+ */
+function hasCheckedInToday(int $userId): bool
+{
+    $stmt = getPDO()->prepare(
+        'SELECT COUNT(*) FROM daily_checkins WHERE user_id = ? AND checkin_date = CURDATE()'
+    );
+    $stmt->execute([$userId]);
+
+    return (int)$stmt->fetchColumn() > 0;
 }
 
 /* =============================================================
@@ -501,7 +736,7 @@ function getUserById(int $userId): array|false
 /**
  * Get all badges for a user, including locked ones (for badge gallery).
  *
- * @return array [{badge_id, name, description, icon, criteria, earned (bool), earned_at}]
+ * @return array [{badge_id, name, description, icon, criteria, earned, earned_at}]
  */
 function getUserBadges(int $userId): array
 {
@@ -519,16 +754,39 @@ function getUserBadges(int $userId): array
 }
 
 /**
+ * Turn a badge criteria string into something a participant can read, so a
+ * locked badge explains how to unlock it.
+ */
+function describeBadgeCriteria(?string $criteria): string
+{
+    $criteria = trim((string)$criteria);
+
+    if (preg_match('/^points>=(\d+)$/', $criteria, $m)) {
+        return 'Reach ' . (int)$m[1] . ' points';
+    }
+    if (preg_match('/^streak>=(\d+)$/', $criteria, $m)) {
+        return 'Stay active ' . (int)$m[1] . ' days in a row';
+    }
+    if (preg_match('/^logs>=(\d+)$/', $criteria, $m)) {
+        $n = (int)$m[1];
+        return 'Get ' . $n . ' ' . ($n === 1 ? 'activity' : 'activities') . ' approved';
+    }
+    if ($criteria === 'goal_achieved') {
+        return 'Hit one of your personal point goals';
+    }
+
+    return 'Awarded by an administrator';
+}
+
+/**
  * Get paginated activity log for a user.
- *
- * @return array [{log_id, cat_name, description, points, status, created_at}]
  */
 function getUserActivityLog(int $userId, int $page = 1, int $perPage = 10): array
 {
-    $offset = ($page - 1) * $perPage;
+    $offset = max(0, ($page - 1) * $perPage);
     $stmt   = getPDO()->prepare(
         'SELECT al.log_id, c.name AS cat_name, al.description,
-                al.points, al.status, al.evidence, al.created_at
+                al.points, al.status, al.evidence, al.review_note, al.created_at
          FROM activity_logs al
          JOIN categories c ON c.cat_id = al.cat_id
          WHERE al.user_id = :uid
@@ -544,8 +802,6 @@ function getUserActivityLog(int $userId, int $page = 1, int $perPage = 10): arra
 
 /**
  * Get points transaction history for a user.
- *
- * @return array [{delta, reason, created_at}]
  */
 function getPointsHistory(int $userId, int $limit = 50): array
 {
@@ -560,6 +816,29 @@ function getPointsHistory(int $userId, int $limit = 50): array
     $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
     $stmt->execute();
     return $stmt->fetchAll();
+}
+
+/**
+ * Lifetime earned and spent totals across every transaction, not just the
+ * page of history being displayed.
+ *
+ * @return array{earned: int, spent: int}
+ */
+function getPointsTotals(int $userId): array
+{
+    $stmt = getPDO()->prepare(
+        'SELECT COALESCE(SUM(CASE WHEN delta > 0 THEN delta ELSE 0 END), 0)  AS earned,
+                COALESCE(SUM(CASE WHEN delta < 0 THEN -delta ELSE 0 END), 0) AS spent
+         FROM points_transactions
+         WHERE user_id = :uid'
+    );
+    $stmt->execute([':uid' => $userId]);
+    $row = $stmt->fetch() ?: [];
+
+    return [
+        'earned' => (int)($row['earned'] ?? 0),
+        'spent'  => (int)($row['spent']  ?? 0),
+    ];
 }
 
 /**
@@ -596,16 +875,91 @@ function getRecentEcoTips(int $limit = 3): array
     return $stmt->fetchAll();
 }
 
+/* =============================================================
+ *  CHALLENGES
+ * ============================================================*/
+
 /**
- * Auto-complete joined challenges once the participant has at least one
- * approved matching activity log after joining the challenge.
+ * How many approved logs a user has that count toward a challenge.
+ * Read-only, so pages can show "3 of 5 logged".
+ */
+function countChallengeProgress(int $userId, array $challenge): int
+{
+    $sql = 'SELECT COUNT(*)
+            FROM activity_logs al
+            WHERE al.user_id = :uid
+              AND al.status = "approved"
+              AND al.created_at >= :joined';
+    $params = [
+        ':uid'    => $userId,
+        ':joined' => $challenge['joined_at'],
+    ];
+
+    if (!empty($challenge['cat_id'])) {
+        $sql .= ' AND al.cat_id = :cat_id';
+        $params[':cat_id'] = (int)$challenge['cat_id'];
+    }
+    if (!empty($challenge['start_date'])) {
+        $sql .= ' AND DATE(al.created_at) >= :start_date';
+        $params[':start_date'] = $challenge['start_date'];
+    }
+    if (!empty($challenge['end_date'])) {
+        $sql .= ' AND DATE(al.created_at) <= :end_date';
+        $params[':end_date'] = $challenge['end_date'];
+    }
+
+    $stmt = getPDO()->prepare($sql);
+    $stmt->execute($params);
+
+    return (int)$stmt->fetchColumn();
+}
+
+/**
+ * Progress toward every challenge this user has joined, keyed by challenge id.
+ * Read-only — safe to call from a page render.
+ *
+ * @return array<int, array{done: int, target: int, completed: bool}>
+ */
+function getUserChallengeProgress(int $userId): array
+{
+    $stmt = getPDO()->prepare(
+        'SELECT cp.challenge_id, cp.joined_at, cp.completed,
+                c.cat_id, c.start_date, c.end_date, c.target_count
+         FROM challenge_participants cp
+         JOIN challenges c ON c.challenge_id = cp.challenge_id
+         WHERE cp.user_id = :uid'
+    );
+    $stmt->execute([':uid' => $userId]);
+
+    $progress = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $target = max(1, (int)($row['target_count'] ?? 1));
+        $done   = !empty($row['completed'])
+            ? $target
+            : min($target, countChallengeProgress($userId, $row));
+
+        $progress[(int)$row['challenge_id']] = [
+            'done'      => $done,
+            'target'    => $target,
+            'completed' => !empty($row['completed']),
+        ];
+    }
+
+    return $progress;
+}
+
+/**
+ * Complete any joined challenge whose target has been met, and pay its points.
+ *
+ * Write path — call after a submission is approved, never during a render.
  */
 function refreshUserChallengeProgress(int $userId): void
 {
-    $pdo = getPDO();
+    $pdo  = getPDO();
     $stmt = $pdo->prepare(
         'SELECT cp.id, cp.challenge_id, cp.joined_at, cp.completed,
-                c.title, c.points, c.cat_id, c.start_date, c.end_date, c.status
+                c.title, c.points, c.cat_id, c.start_date, c.end_date,
+                c.status, c.target_count
          FROM challenge_participants cp
          JOIN challenges c ON c.challenge_id = cp.challenge_id
          WHERE cp.user_id = :uid
@@ -616,48 +970,22 @@ function refreshUserChallengeProgress(int $userId): void
     $rows = $stmt->fetchAll();
 
     foreach ($rows as $row) {
-        $sql = 'SELECT al.log_id
-                FROM activity_logs al
-                WHERE al.user_id = :uid
-                  AND al.status = "approved"
-                  AND al.created_at >= :joined';
-        $params = [
-            ':uid' => $userId,
-            ':joined' => $row['joined_at'],
-        ];
+        $target = max(1, (int)($row['target_count'] ?? 1));
 
-        if (!empty($row['cat_id'])) {
-            $sql .= ' AND al.cat_id = :cat_id';
-            $params[':cat_id'] = (int)$row['cat_id'];
-        }
-        if (!empty($row['start_date'])) {
-            $sql .= ' AND DATE(al.created_at) >= :start_date';
-            $params[':start_date'] = $row['start_date'];
-        }
-        if (!empty($row['end_date'])) {
-            $sql .= ' AND DATE(al.created_at) <= :end_date';
-            $params[':end_date'] = $row['end_date'];
-        }
-
-        $sql .= ' ORDER BY al.created_at ASC LIMIT 1';
-        $matchStmt = $pdo->prepare($sql);
-        $matchStmt->execute($params);
-        $matchingLogId = $matchStmt->fetchColumn();
-
-        if (!$matchingLogId) {
+        if (countChallengeProgress($userId, $row) < $target) {
             continue;
         }
 
-        $startedTransaction = !$pdo->inTransaction();
-        if ($startedTransaction) {
+        $ownTransaction = !$pdo->inTransaction();
+        if ($ownTransaction) {
             $pdo->beginTransaction();
         }
-        try {
-            $lockStmt = $pdo->prepare('SELECT completed FROM challenge_participants WHERE id = ? FOR UPDATE');
-            $lockStmt->execute([(int)$row['id']]);
-            $isCompleted = (int)$lockStmt->fetchColumn();
 
-            if ($isCompleted === 0) {
+        try {
+            $lock = $pdo->prepare('SELECT completed FROM challenge_participants WHERE id = ? FOR UPDATE');
+            $lock->execute([(int)$row['id']]);
+
+            if ((int)$lock->fetchColumn() === 0) {
                 $pdo->prepare(
                     'UPDATE challenge_participants
                      SET completed = 1, completed_at = NOW()
@@ -672,11 +1000,11 @@ function refreshUserChallengeProgress(int $userId): void
                 );
             }
 
-            if ($startedTransaction) {
+            if ($ownTransaction) {
                 $pdo->commit();
             }
         } catch (Throwable $e) {
-            if ($startedTransaction && $pdo->inTransaction()) {
+            if ($ownTransaction && $pdo->inTransaction()) {
                 $pdo->rollBack();
             }
             throw $e;

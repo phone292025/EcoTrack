@@ -4,11 +4,32 @@
  * File: layout/header.php
  *
  * Variables expected before include:
- *   $pageTitle  (string)  — shown in <title> and page heading area
+ *   $pageTitle   (string)  — shown in <title> and page heading area
+ *   $needsCharts (bool)    — set true on pages that draw Chart.js charts
  */
 require_once __DIR__ . '/../includes/paths.php';
-$pageTitle = $pageTitle ?? 'EcoTrack';
-$role      = $_SESSION['role'] ?? 'guest';
+$pageTitle   = $pageTitle ?? 'EcoTrack';
+$needsCharts = $needsCharts ?? false;
+$role        = $_SESSION['role'] ?? 'guest';
+
+// Points come from the session, refreshed whenever the balance changes, so
+// the shared layout does not run a query on every page in the project.
+$navPoints = function_exists('currentPoints') ? currentPoints() : 0;
+
+$currentScript = basename($_SERVER['SCRIPT_NAME'] ?? '');
+
+/** Mark the nav link for the page being viewed. */
+function navLink(string $href, string $label, string $currentScript): string
+{
+    $isActive = basename($href) === $currentScript;
+
+    return sprintf(
+        '<a href="%s"%s>%s</a>',
+        htmlspecialchars($href, ENT_QUOTES, 'UTF-8'),
+        $isActive ? ' class="nav-link--active" aria-current="page"' : '',
+        htmlspecialchars($label, ENT_QUOTES, 'UTF-8')
+    );
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -16,12 +37,18 @@ $role      = $_SESSION['role'] ?? 'guest';
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="EcoTrack — Sustainable Activity Tracking & Rewards">
-  <title><?= htmlspecialchars($pageTitle) ?> | EcoTrack</title>
+  <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?> | EcoTrack</title>
+  <link rel="icon" href="<?= BASE_URL ?>/assets/img/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/style.css">
-  <!-- Chart.js (loaded only where needed via defer) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
+  <?php if ($needsCharts): ?>
+    <!-- Chart.js is vendored locally so charts still work with no internet
+         connection, and so no third party can change what this page runs. -->
+    <script src="<?= BASE_URL ?>/assets/js/vendor/chart.umd.min.js" defer></script>
+  <?php endif; ?>
 </head>
 <body>
+
+<a href="#mainContent" class="skip-link">Skip to main content</a>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <!--  TOP NAVIGATION BAR                                     -->
@@ -44,35 +71,35 @@ $role      = $_SESSION['role'] ?? 'guest';
     <!-- Navigation links — change by role -->
     <nav class="nav-menu" id="navMenu" role="navigation" aria-label="Main navigation">
       <?php if ($role === 'participant'): ?>
-        <a href="<?= BASE_URL ?>/participant/dashboard.php">Dashboard</a>
-        <a href="<?= BASE_URL ?>/participant/log_activity.php">Log Activity</a>
-        <a href="<?= BASE_URL ?>/participant/challenges.php">Challenges</a>
-        <a href="<?= BASE_URL ?>/participant/shop.php">Green Shop</a>
-        <a href="<?= BASE_URL ?>/participant/points.php">Points</a>
-        <a href="<?= BASE_URL ?>/participant/leaderboard.php">Leaderboard</a>
-        <a href="<?= BASE_URL ?>/participant/profile.php">Profile</a>
+        <?= navLink(BASE_URL . '/participant/dashboard.php',    'Dashboard',   $currentScript) ?>
+        <?= navLink(BASE_URL . '/participant/log_activity.php', 'Log Activity', $currentScript) ?>
+        <?= navLink(BASE_URL . '/participant/challenges.php',   'Challenges',  $currentScript) ?>
+        <?= navLink(BASE_URL . '/participant/shop.php',         'Green Shop',  $currentScript) ?>
+        <?= navLink(BASE_URL . '/participant/points.php',       'Points',      $currentScript) ?>
+        <?= navLink(BASE_URL . '/participant/leaderboard.php',  'Leaderboard', $currentScript) ?>
+        <?= navLink(BASE_URL . '/participant/profile.php',      'Profile',     $currentScript) ?>
 
       <?php elseif ($role === 'moderator'): ?>
-        <a href="<?= BASE_URL ?>/moderator/dashboard.php">Dashboard</a>
-        <a href="<?= BASE_URL ?>/moderator/review_submissions.php">Review</a>
-        <a href="<?= BASE_URL ?>/moderator/participant_table.php">Participants</a>
-        <a href="<?= BASE_URL ?>/moderator/create_challenge.php">Challenges</a>
-        <a href="<?= BASE_URL ?>/moderator/eco_tips.php">Eco Tips</a>
+        <?= navLink(BASE_URL . '/moderator/dashboard.php',           'Dashboard',    $currentScript) ?>
+        <?= navLink(BASE_URL . '/moderator/review_submissions.php',  'Review',       $currentScript) ?>
+        <?= navLink(BASE_URL . '/moderator/participant_table.php',   'Participants', $currentScript) ?>
+        <?= navLink(BASE_URL . '/moderator/create_challenge.php',    'Challenges',   $currentScript) ?>
+        <?= navLink(BASE_URL . '/moderator/eco_tips.php',            'Eco Tips',     $currentScript) ?>
 
       <?php elseif ($role === 'admin'): ?>
-        <a href="<?= BASE_URL ?>/admin/dashboard.php">Dashboard</a>
-        <a href="<?= BASE_URL ?>/admin/review_submissions.php">Review</a>
-        <a href="<?= BASE_URL ?>/admin/user_management.php">Users</a>
-        <a href="<?= BASE_URL ?>/admin/participant_table.php">Participants</a>
-        <a href="<?= BASE_URL ?>/admin/challenge_management.php">Challenges</a>
-        <a href="<?= BASE_URL ?>/admin/eco_tips.php">Eco Tips</a>
-        <a href="<?= BASE_URL ?>/admin/rewards_management.php">Rewards</a>
-        <a href="<?= BASE_URL ?>/admin/badges_management.php">Badges</a>
-        <a href="<?= BASE_URL ?>/admin/announcements.php">Announcements</a>
+        <?= navLink(BASE_URL . '/admin/dashboard.php',             'Dashboard',     $currentScript) ?>
+        <?= navLink(BASE_URL . '/admin/review_submissions.php',    'Review',        $currentScript) ?>
+        <?= navLink(BASE_URL . '/admin/user_management.php',       'Users',         $currentScript) ?>
+        <?= navLink(BASE_URL . '/admin/participant_table.php',     'Participants',  $currentScript) ?>
+        <?= navLink(BASE_URL . '/admin/challenge_management.php',  'Challenges',    $currentScript) ?>
+        <?= navLink(BASE_URL . '/admin/eco_tips.php',              'Eco Tips',      $currentScript) ?>
+        <?= navLink(BASE_URL . '/admin/rewards_management.php',    'Rewards',       $currentScript) ?>
+        <?= navLink(BASE_URL . '/admin/badges_management.php',     'Badges',        $currentScript) ?>
+        <?= navLink(BASE_URL . '/admin/announcements.php',         'Announcements', $currentScript) ?>
 
       <?php else: ?>
-        <a href="<?= BASE_URL ?>/login.php">Login</a>
-        <a href="<?= BASE_URL ?>/register.php">Register</a>
+        <?= navLink(BASE_URL . '/login.php',    'Login',    $currentScript) ?>
+        <?= navLink(BASE_URL . '/register.php', 'Register', $currentScript) ?>
       <?php endif; ?>
 
       <?php if (isset($_SESSION['user_id'])): ?>
@@ -80,16 +107,11 @@ $role      = $_SESSION['role'] ?? 'guest';
       <?php endif; ?>
     </nav>
 
-    <!-- Points badge (logged-in users) -->
-    <?php if (isset($_SESSION['user_id'])): ?>
-      <?php
-        $u = getPDO()->prepare('SELECT points FROM users WHERE user_id = ?');
-        $u->execute([$_SESSION['user_id']]);
-        $pts = (int)($u->fetchColumn() ?: 0);
-      ?>
+    <!-- Points badge (participants only — moderators and admins do not earn) -->
+    <?php if (isset($_SESSION['user_id']) && $role === 'participant'): ?>
       <div class="nav-points" aria-label="Your points balance">
         <img src="<?= BASE_URL ?>/assets/img/icon_leaf.svg" alt="" width="16" height="16">
-        <span id="navPointsBadge"><?= $pts ?> pts</span>
+        <span id="navPointsBadge"><?= (int)$navPoints ?> pts</span>
       </div>
     <?php endif; ?>
 

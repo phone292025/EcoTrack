@@ -7,30 +7,33 @@ requireRole('participant');
 
 $pdo = getPDO();
 $uid = currentUserId();
-$msg = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
     $cid = (int)($_POST['join_challenge_id'] ?? 0);
-    if ($cid > 0) {
-        try {
-            $pdo->prepare(
-                'INSERT INTO challenge_participants (challenge_id, user_id) VALUES (?, ?)'
-            )->execute([$cid, $uid]);
-            $_SESSION['flash_success'] = 'Challenge joined. Submit a matching activity for moderator review to complete it.';
-            header('Location: log_activity.php?challenge_id=' . $cid);
-            exit;
-        } catch (PDOException $e) {
-            if ($e->getCode() === '23000') {
-                $msg = 'Already joined this challenge.';
-            } else {
-                throw $e;
-            }
+
+    if ($cid <= 0) {
+        setFlash('error', 'Invalid challenge selected.');
+        redirectTo('/participant/challenges.php');
+    }
+
+    try {
+        $pdo->prepare(
+            'INSERT INTO challenge_participants (challenge_id, user_id) VALUES (?, ?)'
+        )->execute([$cid, $uid]);
+
+        setFlash('success', 'Challenge joined. Submit a matching activity for moderator review to complete it.');
+        redirectTo('/participant/log_activity.php?challenge_id=' . $cid);
+    } catch (PDOException $e) {
+        if (isDuplicateKeyError($e)) {
+            setFlash('error', 'You have already joined this challenge.');
+            redirectTo('/participant/challenges.php');
         }
+        throw $e;
     }
 }
 
-refreshUserChallengeProgress($uid);
+$flash = takeFlash();
 
 $stmt = $pdo->query(
     'SELECT c.*, cat.name AS cat_name
@@ -55,6 +58,7 @@ if ($list) {
 }
 
 $challengeStats = getUserChallengeStats($uid);
+$progressByChallenge = getUserChallengeProgress($uid);
 
 $pageTitle = 'Challenges';
 require_once __DIR__ . '/../layout/header.php';
@@ -68,9 +72,12 @@ require_once __DIR__ . '/../layout/header.php';
     <span class="badge badge-blue"><?= (int)($challengeStats['completed'] ?? 0) ?> completed</span>
   </div>
 
-  <?php if ($msg): ?>
-    <div class="flash-message flash-success" role="status"><?= sanitise($msg) ?></div>
-  <?php endif; ?>
+  <?php foreach ($flash['error'] as $message): ?>
+    <div class="flash-message flash-error" role="alert"><?= sanitise($message) ?></div>
+  <?php endforeach; ?>
+  <?php foreach ($flash['success'] as $message): ?>
+    <div class="flash-message flash-success" role="status"><?= sanitise($message) ?></div>
+  <?php endforeach; ?>
 
   <div class="challenge-board">
     <?php if (empty($list)): ?>
@@ -81,11 +88,17 @@ require_once __DIR__ . '/../layout/header.php';
     <?php else: ?>
       <?php foreach ($list as $c): ?>
         <?php
-        $joinData = $joined[(int)$c['challenge_id']] ?? null;
+        $challengeId = (int)$c['challenge_id'];
+        $joinData = $joined[$challengeId] ?? null;
         $isJoined = $joinData !== null;
         $isCompleted = $isJoined && !empty($joinData['completed']);
         $needsCategory = !empty($c['cat_name']) ? $c['cat_name'] : 'any approved activity';
-        $logChallengeUrl = 'log_activity.php?challenge_id=' . (int)$c['challenge_id'];
+        $logChallengeUrl = 'log_activity.php?challenge_id=' . $challengeId;
+
+        $target = max(1, (int)($c['target_count'] ?? 1));
+        $progress = $progressByChallenge[$challengeId] ?? null;
+        $done = $progress['done'] ?? 0;
+        $percent = $target > 0 ? min(100, (int)round(($done / $target) * 100)) : 0;
         ?>
         <article class="reward-admin-card reward-admin-card--default">
           <div class="reward-admin-card__accent" aria-hidden="true"></div>
@@ -96,6 +109,7 @@ require_once __DIR__ . '/../layout/header.php';
                 <div class="reward-admin-card__meta">
                   <span class="reward-admin-card__chip reward-admin-card__chip--default"><?= sanitise($c['difficulty'] ?? 'easy') ?></span>
                   <span><?= (int)($c['points'] ?? 0) ?> pts</span>
+                  <span><?= $target ?> approved log<?= $target === 1 ? '' : 's' ?></span>
                   <?php if (!empty($c['cat_name'])): ?><span><?= sanitise($c['cat_name']) ?></span><?php endif; ?>
                 </div>
               </div>
@@ -108,12 +122,27 @@ require_once __DIR__ . '/../layout/header.php';
 
             <div class="reward-admin-card__info">
               <span class="reward-admin-card__stock">
-                <?= $isCompleted ? 'Completed on ' . sanitise((string)$joinData['completed_at']) : 'Complete one approved ' . sanitise($needsCategory) . ' log' ?>
+                <?php if ($isCompleted): ?>
+                  Completed on <?= sanitise((string)$joinData['completed_at']) ?>
+                <?php else: ?>
+                  Log <?= $target ?> approved <?= sanitise($needsCategory) ?><?= $target === 1 ? '' : 's' ?>
+                <?php endif; ?>
               </span>
               <span class="reward-admin-card__visibility">
                 <?= !empty($c['end_date']) ? 'Ends ' . sanitise((string)$c['end_date']) : 'No fixed end date' ?>
               </span>
             </div>
+
+            <?php if ($isJoined && !$isCompleted): ?>
+              <div class="challenge-progress">
+                <div class="progress-bar" role="progressbar"
+                     aria-valuenow="<?= $done ?>" aria-valuemin="0" aria-valuemax="<?= $target ?>"
+                     aria-label="Challenge progress">
+                  <div class="progress-fill progress-fill--green" style="width:<?= $percent ?>%;"></div>
+                </div>
+                <p class="challenge-progress__label"><?= $done ?> of <?= $target ?> logged</p>
+              </div>
+            <?php endif; ?>
 
             <div class="reward-admin-card__divider" aria-hidden="true"></div>
 

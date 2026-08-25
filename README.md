@@ -97,7 +97,8 @@ The project includes an example local config file:
 Copy-Item .\database\db.local.example.php .\database\db.local.php
 ```
 
-Then edit it if your database name, username, password, or host is different:
+Then edit it if your database name, username, password, or host is different, or
+to turn off the demo account panel on the login page:
 
 ```powershell
 notepad .\database\db.local.php
@@ -109,13 +110,25 @@ By default, the project uses the database name:
 ecotrack
 ```
 
-### 6. Check The Setup
+### 6. Run The Migration
+
+This creates anything missing and brings an older database up to the current
+schema. It is safe to run more than once.
+
+```powershell
+php .\scripts\migrate.php
+```
+
+### 7. Check The Setup
 
 ```powershell
 php .\scripts\check_setup.php
 ```
 
 If everything is correct, the script will confirm that EcoTrack is ready.
+
+> **Note:** everything in `scripts/` is command line only. Each file refuses to
+> run over HTTP, and `scripts/.htaccess` blocks the folder from the web as well.
 
 ## Usage
 
@@ -162,6 +175,25 @@ Password: mod123
 ```
 
 Participants can create an account using the registration page.
+
+These details are shown on the login page only while `DEMO_MODE` is on. Set it to
+`false` in `database/db.local.php` for any deployment that is not a marked demo:
+
+```php
+define('DEMO_MODE', false);
+```
+
+## Security Notes
+
+- All queries use prepared statements with bound parameters.
+- Every form carries a CSRF token, validated with `hash_equals()`.
+- Session cookies are `HttpOnly` and `SameSite=Lax`, and `Secure` over HTTPS.
+- Five failed logins from one account or IP trigger a 15 minute cool-off.
+- Uploads are checked with `finfo`, capped at 5 MB, stored under random
+  filenames, and the upload folders block PHP execution.
+- Every POST redirects afterwards, so refreshing cannot repeat a submission.
+- `points_transactions` is the authoritative ledger; `users.points` is written
+  in the same transaction and always equals `SUM(delta)`.
 
 ## Roadmap
 

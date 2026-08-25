@@ -1,5 +1,10 @@
 <?php
 /** php scripts/apply_admin_mod_passwords.php */
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit;
+}
+
 require_once __DIR__ . '/../database/db.php';
 $pdo = getPDO();
 $pdo->prepare(

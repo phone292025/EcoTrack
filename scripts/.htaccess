@@ -1,0 +1,10 @@
+# Maintenance scripts are command-line tools, never web endpoints.
+# Every file here also guards itself with a PHP_SAPI check; this is the
+# second layer so a misconfigured guard can never expose one of them.
+Require all denied
+
+# Apache 2.2 fallback
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>

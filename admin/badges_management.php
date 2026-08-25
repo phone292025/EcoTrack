@@ -11,8 +11,6 @@ $badgeForm = [
     'description' => '',
     'criteria' => '',
 ];
-$err = '';
-$ok = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
@@ -26,7 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ];
 
         if (strlen($badgeForm['name']) < 2) {
-            $err = 'Badge name must be at least 2 characters.';
+            setFlash('error', 'Badge name must be at least 2 characters.');
         } else {
             $pdo->prepare(
                 'INSERT INTO badges (name, description, icon, criteria, created_by)
@@ -38,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 currentUserId(),
             ]);
 
-            $ok = 'Badge created.';
+            setFlash('success', 'Badge created.');
             $badgeForm = [
                 'name' => '',
                 'description' => '',
@@ -52,26 +50,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $criteria = trim($_POST['criteria'] ?? '');
 
         if ($badgeId <= 0) {
-            $err = 'Invalid badge selected.';
+            setFlash('error', 'Invalid badge selected.');
         } elseif (strlen($name) < 2) {
-            $err = 'Badge name must be at least 2 characters.';
+            setFlash('error', 'Badge name must be at least 2 characters.');
         } else {
             $pdo->prepare(
                 'UPDATE badges
                  SET name = ?, description = ?, criteria = NULLIF(?, "")
                  WHERE badge_id = ?'
             )->execute([$name, $description, $criteria, $badgeId]);
-            $ok = 'Badge updated.';
+            setFlash('success', 'Badge updated.');
         }
     } elseif ($action === 'delete') {
         $badgeId = (int)($_POST['badge_id'] ?? 0);
         if ($badgeId > 0) {
             $pdo->prepare('DELETE FROM badges WHERE badge_id = ?')->execute([$badgeId]);
-            $ok = 'Badge deleted.';
+            setFlash('success', 'Badge deleted.');
         } else {
-            $err = 'Invalid badge selected.';
+            setFlash('error', 'Invalid badge selected.');
         }
     }
+
+    setFormOld($badgeForm);
+
+    // Redirect so refreshing cannot repeat the submission.
+    redirectToSelf($_SERVER['QUERY_STRING'] ?? '');
+}
+
+$flash = takeFlash();
+$old = takeFormOld();
+if ($old) {
+    $badgeForm = array_merge($badgeForm, $old);
 }
 
 $badges = $pdo->query(
@@ -148,8 +157,12 @@ require_once __DIR__ . '/../layout/header.php';
     </article>
   </section>
 
-  <?php if ($err): ?><div class="flash-message flash-error" role="alert"><?= sanitise($err) ?></div><?php endif; ?>
-  <?php if ($ok): ?><div class="flash-message flash-success" role="status"><?= sanitise($ok) ?></div><?php endif; ?>
+  <?php foreach ($flash['error'] as $flashMessage): ?>
+    <div class="flash-message flash-error" role="alert"><?= sanitise($flashMessage) ?></div>
+  <?php endforeach; ?>
+  <?php foreach ($flash['success'] as $flashMessage): ?>
+    <div class="flash-message flash-success" role="status"><?= sanitise($flashMessage) ?></div>
+  <?php endforeach; ?>
 
   <section class="card reward-admin-studio">
     <div class="reward-admin-studio-layout">

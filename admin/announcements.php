@@ -6,8 +6,6 @@ require_once __DIR__ . '/../includes/functions.php';
 requireRole('admin');
 
 $pdo = getPDO();
-$err = '';
-$ok = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
@@ -16,23 +14,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'delete') {
         $annId = (int)($_POST['ann_id'] ?? 0);
         if ($annId <= 0) {
-            $err = 'Invalid announcement selected.';
+            setFlash('error', 'Invalid announcement selected.');
         } else {
             $stmt = $pdo->prepare('DELETE FROM announcements WHERE ann_id = ?');
             $stmt->execute([$annId]);
-            $ok = $stmt->rowCount() > 0 ? 'Announcement deleted.' : 'Announcement not found.';
+            setFlash('success', $stmt->rowCount() > 0 ? 'Announcement deleted.' : 'Announcement not found.');
         }
     } else {
         $title = trim($_POST['ann_title'] ?? '');
         $body = trim($_POST['ann_body'] ?? '');
-        if (strlen($title) >= 2) {
+        if (strlen($title) < 2) {
+            setFlash('error', 'Give the announcement a title of at least 2 characters.');
+            setFormOld(['ann_title' => $title, 'ann_body' => $body]);
+        } else {
             $pdo->prepare(
                 'INSERT INTO announcements (title, body, created_by) VALUES (?, ?, ?)'
             )->execute([$title, $body, currentUserId()]);
-            $ok = 'Announcement posted.';
+            setFlash('success', 'Announcement posted.');
         }
     }
+
+    // Redirect so refreshing cannot repeat the submission.
+    redirectToSelf($_SERVER['QUERY_STRING'] ?? '');
 }
+
+$flash = takeFlash();
 
 $list = $pdo->query(
     'SELECT a.*, u.username FROM announcements a LEFT JOIN users u ON u.user_id = a.created_by ORDER BY a.created_at DESC'
@@ -50,8 +56,12 @@ require_once __DIR__ . '/../layout/header.php';
     <span class="badge badge-blue"><?= count($list) ?> post<?= count($list) === 1 ? '' : 's' ?></span>
   </div>
 
-  <?php if ($err): ?><div class="flash-message flash-error" role="alert"><?= sanitise($err) ?></div><?php endif; ?>
-  <?php if ($ok): ?><div class="flash-message flash-success"><?= sanitise($ok) ?></div><?php endif; ?>
+  <?php foreach ($flash['error'] as $flashMessage): ?>
+    <div class="flash-message flash-error" role="alert"><?= sanitise($flashMessage) ?></div>
+  <?php endforeach; ?>
+  <?php foreach ($flash['success'] as $flashMessage): ?>
+    <div class="flash-message flash-success" role="status"><?= sanitise($flashMessage) ?></div>
+  <?php endforeach; ?>
 
   <div class="card" style="margin-bottom:var(--space-4);">
     <h2 class="card-title">New announcement</h2>

@@ -24,22 +24,23 @@ if ($challengeId > 0) {
     $challengeContext = $challengeStmt->fetch() ?: null;
 }
 
-$errors = [];
-$success = $_SESSION['flash_success'] ?? '';
-unset($_SESSION['flash_success']);
-
-$selectedCatId = (int)($_POST['cat_id'] ?? (int)($challengeContext['cat_id'] ?? 0));
+/**
+ * Minimum description length. Kept in one place and echoed into the form so
+ * the hint, the browser check and the server check can never disagree.
+ */
+const ACTIVITY_DESCRIPTION_MIN = 10;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
     $catId = (int)($_POST['cat_id'] ?? 0);
     $desc = trim($_POST['description'] ?? '');
+    $errors = [];
 
     if ($catId <= 0) {
         $errors[] = 'Choose a category.';
     }
-    if (strlen($desc) < 5) {
-        $errors[] = 'Description must be at least 5 characters.';
+    if (mb_strlen($desc) < ACTIVITY_DESCRIPTION_MIN) {
+        $errors[] = 'Description must be at least ' . ACTIVITY_DESCRIPTION_MIN . ' characters.';
     }
     if ($challengeContext && !empty($challengeContext['cat_id']) && $catId !== (int)$challengeContext['cat_id']) {
         $errors[] = 'This challenge must be submitted under the "' . $challengeContext['cat_name'] . '" category.';
@@ -49,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!empty($_FILES['evidence']['name']) && ($_FILES['evidence']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
         $evidence = handleFileUpload($_FILES['evidence']);
         if ($evidence === null) {
-            $errors[] = 'Evidence file could not be uploaded (type/size).';
+            $errors[] = 'Evidence image could not be uploaded. Use a JPG, PNG, GIF or WebP under 5 MB.';
         }
     }
 
@@ -60,17 +61,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
              VALUES (?, ?, ?, ?, ?, "pending")'
         )->execute([currentUserId(), $catId, $desc, $evidence, $pts]);
 
-        $_SESSION['flash_success'] = $challengeContext
+        setFlash('success', $challengeContext
             ? 'Activity submitted for moderator review. Once approved, it will count toward your challenge automatically.'
-            : 'Activity submitted for moderator review.';
-        $redirect = BASE_URL . '/participant/log_activity.php';
-        if ($challengeContext) {
-            $redirect .= '?challenge_id=' . (int)$challengeContext['challenge_id'];
+            : 'Activity submitted for moderator review.');
+    } else {
+        foreach ($errors as $message) {
+            setFlash('error', $message);
         }
-        header('Location: ' . $redirect);
-        exit;
+        setFormOld(['cat_id' => $catId, 'description' => $desc]);
     }
+
+    $redirect = '/participant/log_activity.php';
+    if ($challengeContext) {
+        $redirect .= '?challenge_id=' . (int)$challengeContext['challenge_id'];
+    }
+    redirectTo($redirect);
 }
+
+$flash = takeFlash();
+$old = takeFormOld();
+$selectedCatId = (int)($old['cat_id'] ?? (int)($challengeContext['cat_id'] ?? 0));
 
 $pageTitle = 'Log activity';
 require_once __DIR__ . '/../layout/header.php';
@@ -83,12 +93,12 @@ require_once __DIR__ . '/../layout/header.php';
     </div>
   </div>
 
-  <?php foreach ($errors as $e): ?>
-    <div class="flash-message flash-error" role="alert"><?= sanitise($e) ?></div>
+  <?php foreach ($flash['error'] as $message): ?>
+    <div class="flash-message flash-error" role="alert"><?= sanitise($message) ?></div>
   <?php endforeach; ?>
-  <?php if ($success): ?>
-    <div class="flash-message flash-success" role="status"><?= sanitise($success) ?></div>
-  <?php endif; ?>
+  <?php foreach ($flash['success'] as $message): ?>
+    <div class="flash-message flash-success" role="status"><?= sanitise($message) ?></div>
+  <?php endforeach; ?>
 
   <?php if ($challengeContext): ?>
     <div class="card" style="margin-bottom:var(--space-4); background:#f8fbf9;">
@@ -133,8 +143,13 @@ require_once __DIR__ . '/../layout/header.php';
 
       <div class="form-group">
         <label for="description">What did you do?</label>
-        <textarea id="description" name="description" rows="4" required maxlength="2000"
-                  placeholder="Describe your eco-friendly action..."><?= sanitise($_POST['description'] ?? '') ?></textarea>
+        <textarea id="description" name="description" rows="4" required
+                  minlength="<?= ACTIVITY_DESCRIPTION_MIN ?>" maxlength="2000"
+                  data-minlength="<?= ACTIVITY_DESCRIPTION_MIN ?>"
+                  placeholder="Describe your eco-friendly action..."><?= sanitise($old['description'] ?? '') ?></textarea>
+        <small class="field-hint">
+          At least <?= ACTIVITY_DESCRIPTION_MIN ?> characters. Moderators use this to decide whether to approve your points.
+        </small>
       </div>
 
       <div class="form-group">

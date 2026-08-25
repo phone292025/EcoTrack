@@ -41,11 +41,10 @@ $challengeForm = [
     'cat_id' => '0',
     'difficulty' => 'easy',
     'points' => '10',
+    'target_count' => '1',
     'start_date' => '',
     'end_date' => '',
 ];
-$err = '';
-$ok = '';
 $expandedChallengeId = max(0, (int)($_GET['edit'] ?? 0));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -60,6 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'cat_id' => (string)((int)($_POST['cat_id'] ?? 0)),
             'difficulty' => $_POST['difficulty'] ?? 'easy',
             'points' => (string)((int)($_POST['points'] ?? 10)),
+            'target_count' => (string)((int)($_POST['target_count'] ?? 1)),
             'start_date' => trim($_POST['start_date'] ?? ''),
             'end_date' => trim($_POST['end_date'] ?? ''),
         ];
@@ -69,35 +69,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $catId = (int)$challengeForm['cat_id'];
         $difficulty = $challengeForm['difficulty'];
         $points = (int)$challengeForm['points'];
+        $targetCount = (int)$challengeForm['target_count'];
         $startDate = $challengeForm['start_date'];
         $endDate = $challengeForm['end_date'];
 
         if (strlen($title) < 3) {
-            $err = 'Challenge title must be at least 3 characters.';
+            setFlash('error', 'Challenge title must be at least 3 characters.');
         } elseif (!in_array($difficulty, ['easy', 'medium', 'hard'], true)) {
-            $err = 'Please choose a valid difficulty.';
+            setFlash('error', 'Please choose a valid difficulty.');
         } elseif ($points < 1) {
-            $err = 'Challenge points must be at least 1.';
+            setFlash('error', 'Challenge points must be at least 1.');
+        } elseif ($targetCount < 1 || $targetCount > 365) {
+            setFlash('error', 'Approved logs required must be between 1 and 365.');
         } elseif ($startDate !== '' && $endDate !== '' && $startDate > $endDate) {
-            $err = 'End date must be on or after the start date.';
+            setFlash('error', 'End date must be on or after the start date.');
         } else {
             $catValue = $catId > 0 ? $catId : null;
             $pdo->prepare(
-                'INSERT INTO challenges (title, description, cat_id, difficulty, points, start_date, end_date, created_by, status)
-                 VALUES (?, ?, ?, ?, ?, NULLIF(?, ""), NULLIF(?, ""), ?, "active")'
-            )->execute([$title, $body, $catValue, $difficulty, $points, $startDate, $endDate, currentUserId()]);
+                'INSERT INTO challenges (title, description, cat_id, difficulty, points, target_count, start_date, end_date, created_by, status)
+                 VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ""), NULLIF(?, ""), ?, "active")'
+            )->execute([$title, $body, $catValue, $difficulty, $points, $targetCount, $startDate, $endDate, currentUserId()]);
 
-            $ok = 'Challenge created and published.';
-            $challengeForm = [
-                'title' => '',
-                'description' => '',
-                'cat_id' => '0',
-                'difficulty' => 'easy',
-                'points' => '10',
-                'start_date' => '',
-                'end_date' => '',
-            ];
+            setFlash('success', 'Challenge created and published.');
         }
+
+        setFormOld($challengeForm);
     } elseif ($action === 'update') {
         $challengeId = (int)($_POST['challenge_id'] ?? 0);
         $expandedChallengeId = $challengeId;
@@ -106,42 +102,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $catId = (int)($_POST['cat_id'] ?? 0);
         $difficulty = $_POST['difficulty'] ?? 'easy';
         $points = (int)($_POST['points'] ?? 10);
+        $targetCount = (int)($_POST['target_count'] ?? 1);
         $startDate = trim($_POST['start_date'] ?? '');
         $endDate = trim($_POST['end_date'] ?? '');
         $status = $_POST['status'] ?? 'active';
 
         if ($challengeId <= 0) {
-            $err = 'Invalid challenge selected.';
+            setFlash('error', 'Invalid challenge selected.');
         } elseif (strlen($title) < 3) {
-            $err = 'Challenge title must be at least 3 characters.';
+            setFlash('error', 'Challenge title must be at least 3 characters.');
         } elseif (!in_array($difficulty, ['easy', 'medium', 'hard'], true)) {
-            $err = 'Please choose a valid difficulty.';
+            setFlash('error', 'Please choose a valid difficulty.');
         } elseif (!in_array($status, ['active', 'closed'], true)) {
-            $err = 'Please choose a valid status.';
+            setFlash('error', 'Please choose a valid status.');
         } elseif ($points < 1) {
-            $err = 'Challenge points must be at least 1.';
+            setFlash('error', 'Challenge points must be at least 1.');
+        } elseif ($targetCount < 1 || $targetCount > 365) {
+            setFlash('error', 'Approved logs required must be between 1 and 365.');
         } elseif ($startDate !== '' && $endDate !== '' && $startDate > $endDate) {
-            $err = 'End date must be on or after the start date.';
+            setFlash('error', 'End date must be on or after the start date.');
         } else {
             $catValue = $catId > 0 ? $catId : null;
             $pdo->prepare(
                 'UPDATE challenges
                  SET title = ?, description = ?, cat_id = ?, difficulty = ?, points = ?,
-                     start_date = NULLIF(?, ""), end_date = NULLIF(?, ""), status = ?
+                     target_count = ?, start_date = NULLIF(?, ""), end_date = NULLIF(?, ""), status = ?
                  WHERE challenge_id = ?'
-            )->execute([$title, $body, $catValue, $difficulty, $points, $startDate, $endDate, $status, $challengeId]);
+            )->execute([$title, $body, $catValue, $difficulty, $points, $targetCount, $startDate, $endDate, $status, $challengeId]);
 
-            $ok = 'Challenge updated successfully.';
+            setFlash('success', 'Challenge updated successfully.');
         }
     } elseif ($action === 'delete') {
         $challengeId = (int)($_POST['challenge_id'] ?? 0);
         if ($challengeId > 0) {
             $pdo->prepare('DELETE FROM challenges WHERE challenge_id = ?')->execute([$challengeId]);
-            $ok = 'Challenge deleted.';
+            setFlash('success', 'Challenge deleted.');
         } else {
-            $err = 'Invalid challenge selected.';
+            setFlash('error', 'Invalid challenge selected.');
         }
     }
+
+    // Redirect so refreshing cannot repeat the submission.
+    redirectToSelf($_SERVER['QUERY_STRING'] ?? '');
+}
+
+$flash = takeFlash();
+$old = takeFormOld();
+if ($old) {
+    $challengeForm = array_merge($challengeForm, $old);
 }
 
 $list = $pdo->query(
@@ -165,8 +173,12 @@ require_once __DIR__ . '/../layout/header.php';
     <span class="badge badge-blue"><?= count($list) ?> challenge<?= count($list) === 1 ? '' : 's' ?></span>
   </div>
 
-  <?php if ($err): ?><div class="flash-message flash-error" role="alert"><?= sanitise($err) ?></div><?php endif; ?>
-  <?php if ($ok): ?><div class="flash-message flash-success" role="status"><?= sanitise($ok) ?></div><?php endif; ?>
+  <?php foreach ($flash['error'] as $flashMessage): ?>
+    <div class="flash-message flash-error" role="alert"><?= sanitise($flashMessage) ?></div>
+  <?php endforeach; ?>
+  <?php foreach ($flash['success'] as $flashMessage): ?>
+    <div class="flash-message flash-success" role="status"><?= sanitise($flashMessage) ?></div>
+  <?php endforeach; ?>
 
   <div class="challenge-layout">
     <div class="card">
@@ -209,6 +221,12 @@ require_once __DIR__ . '/../layout/header.php';
           <div class="form-group" style="margin-bottom:0;">
             <label for="create_points">Points</label>
             <input type="number" id="create_points" name="points" min="1" max="9999" value="<?= sanitise($challengeForm['points']) ?>">
+          </div>
+
+          <div class="form-group">
+            <label for="create_target_count">Approved logs required</label>
+            <input type="number" id="create_target_count" name="target_count" min="1" max="365" value="<?= sanitise($challengeForm['target_count']) ?>">
+            <small class="field-hint">How many approved activities complete this challenge.</small>
           </div>
         </div>
 
@@ -313,6 +331,11 @@ require_once __DIR__ . '/../layout/header.php';
                   <div class="form-group" style="margin-bottom:0;">
                     <label>Points</label>
                     <input type="number" name="points" min="1" max="9999" value="<?= (int)$challenge['points'] ?>">
+                  </div>
+
+                  <div class="form-group">
+                    <label>Approved logs required</label>
+                    <input type="number" name="target_count" min="1" max="365" value="<?= max(1, (int)($challenge['target_count'] ?? 1)) ?>">
                   </div>
                   <div class="form-group" style="margin-bottom:0;">
                     <label>Start</label>

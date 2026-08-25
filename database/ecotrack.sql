@@ -1,7 +1,11 @@
 -- ============================================================
 -- EcoTrack Database Schema
+--
+-- This file is the single source of truth for the schema.
 -- Import with:
 --   mysql -u root < database/ecotrack.sql
+-- Then verify / top up an existing database with:
+--   php scripts/migrate.php
 -- ============================================================
 
 CREATE DATABASE IF NOT EXISTS ecotrack
@@ -23,8 +27,9 @@ CREATE TABLE IF NOT EXISTS users (
   streak INT NOT NULL DEFAULT 0,
   last_checkin DATE DEFAULT NULL,
   avatar VARCHAR(255) DEFAULT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_users_role (role)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 -- 2. ACTIVITY CATEGORIES
@@ -34,7 +39,7 @@ CREATE TABLE IF NOT EXISTS categories (
   name VARCHAR(50) NOT NULL,
   icon VARCHAR(100) DEFAULT NULL,
   co2_per_point DECIMAL(6,4) DEFAULT 0.0100
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 -- 3. ACTIVITY LOGS
@@ -47,18 +52,24 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   evidence VARCHAR(255) DEFAULT NULL,
   points INT NOT NULL DEFAULT 0,
   status ENUM('pending','approved','rejected','flagged') DEFAULT 'pending',
+  review_note VARCHAR(255) DEFAULT NULL,
   flagged_by INT DEFAULT NULL,
   reviewed_by INT DEFAULT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   reviewed_at DATETIME DEFAULT NULL,
+  INDEX idx_activity_logs_user (user_id),
+  INDEX idx_activity_logs_status (status),
+  INDEX idx_activity_logs_cat (cat_id),
+  INDEX idx_activity_logs_user_status_date (user_id, status, created_at),
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
   FOREIGN KEY (cat_id) REFERENCES categories(cat_id),
   FOREIGN KEY (flagged_by) REFERENCES users(user_id) ON DELETE SET NULL,
   FOREIGN KEY (reviewed_by) REFERENCES users(user_id) ON DELETE SET NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 -- 4. CHALLENGES
+--    target_count = how many approved matching logs complete the challenge.
 -- --------------------------------------------------------
 CREATE TABLE IF NOT EXISTS challenges (
   challenge_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -67,14 +78,16 @@ CREATE TABLE IF NOT EXISTS challenges (
   cat_id INT DEFAULT NULL,
   difficulty ENUM('easy','medium','hard') DEFAULT 'easy',
   points INT NOT NULL DEFAULT 10,
+  target_count INT NOT NULL DEFAULT 1,
   start_date DATE DEFAULT NULL,
   end_date DATE DEFAULT NULL,
   created_by INT DEFAULT NULL,
   status ENUM('draft','active','closed') DEFAULT 'draft',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_challenges_status (status),
   FOREIGN KEY (cat_id) REFERENCES categories(cat_id) ON DELETE SET NULL,
   FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE SET NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 -- 5. CHALLENGE PARTICIPANTS
@@ -87,9 +100,10 @@ CREATE TABLE IF NOT EXISTS challenge_participants (
   completed TINYINT(1) DEFAULT 0,
   completed_at DATETIME DEFAULT NULL,
   UNIQUE KEY uq_cp (challenge_id, user_id),
+  INDEX idx_cp_user (user_id),
   FOREIGN KEY (challenge_id) REFERENCES challenges(challenge_id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 -- 6. BADGES
@@ -102,7 +116,7 @@ CREATE TABLE IF NOT EXISTS badges (
   criteria VARCHAR(255) DEFAULT NULL,
   created_by INT DEFAULT NULL,
   FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE SET NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 -- 7. USER BADGES
@@ -115,7 +129,7 @@ CREATE TABLE IF NOT EXISTS user_badges (
   UNIQUE KEY uq_ub (user_id, badge_id),
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
   FOREIGN KEY (badge_id) REFERENCES badges(badge_id) ON DELETE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 -- 8. GOALS
@@ -129,8 +143,9 @@ CREATE TABLE IF NOT EXISTS goals (
   end_date DATE NOT NULL,
   bonus_awarded TINYINT(1) DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_goals_user_dates (user_id, start_date, end_date),
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 -- 9. REWARDS
@@ -145,7 +160,7 @@ CREATE TABLE IF NOT EXISTS rewards (
   stock INT NOT NULL DEFAULT 0,
   active TINYINT(1) DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 -- 10. REDEMPTIONS
@@ -156,12 +171,14 @@ CREATE TABLE IF NOT EXISTS redemptions (
   reward_id INT NOT NULL,
   points_spent INT NOT NULL,
   redeemed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_redemptions_user (user_id),
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
   FOREIGN KEY (reward_id) REFERENCES rewards(reward_id) ON DELETE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 -- 11. POINTS LEDGER
+--     Authoritative record. users.points must always equal SUM(delta).
 -- --------------------------------------------------------
 CREATE TABLE IF NOT EXISTS points_transactions (
   txn_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -170,8 +187,9 @@ CREATE TABLE IF NOT EXISTS points_transactions (
   reason VARCHAR(255) DEFAULT NULL,
   ref_id INT DEFAULT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_txn_user_date (user_id, created_at),
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 -- 12. DAILY CHECK-INS
@@ -182,7 +200,7 @@ CREATE TABLE IF NOT EXISTS daily_checkins (
   checkin_date DATE NOT NULL,
   UNIQUE KEY uq_checkin (user_id, checkin_date),
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 -- 13. ECO TIPS
@@ -194,7 +212,7 @@ CREATE TABLE IF NOT EXISTS eco_tips (
   created_by INT DEFAULT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE SET NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 -- 14. ANNOUNCEMENTS
@@ -206,7 +224,20 @@ CREATE TABLE IF NOT EXISTS announcements (
   created_by INT DEFAULT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE SET NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- 15. LOGIN ATTEMPTS
+--     Failed logins only. Used to throttle brute-force attempts.
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS login_attempts (
+  attempt_id INT AUTO_INCREMENT PRIMARY KEY,
+  identifier VARCHAR(100) NOT NULL,
+  ip_address VARCHAR(45) NOT NULL,
+  attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_login_identifier (identifier, attempted_at),
+  INDEX idx_login_ip (ip_address, attempted_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
 -- SEED DATA
