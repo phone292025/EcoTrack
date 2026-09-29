@@ -10,6 +10,14 @@
 require_once __DIR__ . '/includes/bootstrap.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // If the session already ended (idle timeout, or the password was
+    // changed elsewhere), bootstrap has signed the user out and queued a
+    // message, and the token on the page is stale. There is nothing left to
+    // log out, so go to the login page rather than refuse the token.
+    if (!isLoggedIn()) {
+        redirectTo('/login.php');
+    }
+
     validateCsrf($_POST['csrf'] ?? '');
     logoutUser();
     setFlash('success', 'You have been logged out.');

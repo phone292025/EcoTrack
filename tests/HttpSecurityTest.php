@@ -118,6 +118,25 @@ final class HttpSecurityTest extends HttpTestCase
         $this->assertSame('/login.php', $client->get('/participant/dashboard.php')->location());
     }
 
+    /**
+     * Regression: once the session had ended on its own, the Logout button
+     * still posted the old token and got a bare 403 page.
+     */
+    public function testLogoutAfterTheSessionAlreadyEndedGoesToLogin(): void
+    {
+        $client = $this->participant('stale');
+        $staleToken = $client->csrf('/participant/dashboard.php');
+
+        // The password changes on another device, which ends this session.
+        getPDO()->prepare('UPDATE users SET password = ? WHERE username = ?')
+            ->execute([password_hash('Changed99', PASSWORD_DEFAULT), 'stale']);
+
+        $response = $client->post('/logout.php', ['csrf' => $staleToken]);
+        $this->assertSame(302, $response->status);
+        $this->assertSame('/login.php', $response->location());
+        $this->assertContains('log in again', $this->flashes($client, '/login.php'));
+    }
+
     public function testSecurityHeadersAreSent(): void
     {
         $response = $this->client()->get('/login.php');
