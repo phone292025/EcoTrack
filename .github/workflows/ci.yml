@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.1', '8.2', '8.3', '8.4']
+
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      ECOTRACK_DB_HOST: 127.0.0.1
+      ECOTRACK_DB_USER: root
+      ECOTRACK_DB_PASS: root
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_mysql, mbstring, fileinfo, gd, curl
+          coverage: none
+
+      - name: Lint PHP
+        run: find . -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l > /dev/null
+
+      - name: Check JavaScript syntax
+        run: for f in assets/js/*.js; do node --check "$f"; done
+
+      - name: Import the schema the way the README does
+        run: mysql -h 127.0.0.1 -uroot -proot < database/ecotrack.sql
+
+      - name: Migrate
+        run: php scripts/migrate.php
+
+      - name: Setup check
+        run: php scripts/check_setup.php
+
+      - name: Demo accounts can log in
+        run: php scripts/check_login_users.php
+
+      - name: Test suite
+        run: php tests/run.php
