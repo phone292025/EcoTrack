@@ -1,7 +1,5 @@
 <?php
-require_once __DIR__ . '/../database/db.php';
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/bootstrap.php';
 
 requireRole('participant');
 
@@ -11,7 +9,7 @@ $pageTitle = 'Leaderboard';
 require_once __DIR__ . '/../layout/header.php';
 ?>
 
-<div class="container page-shell" style="max-width:720px;">
+<div class="container page-shell container--sm">
   <div class="section-header">
     <div>
       <h1 class="section-header__title">Leaderboard</h1>
@@ -30,7 +28,7 @@ require_once __DIR__ . '/../layout/header.php';
               <strong>#<?= (int)$r['rank'] ?></strong>
               <?= sanitise($r['username']) ?>
               <?php if ((int)$r['user_id'] === $myId): ?>
-                <span class="meta-copy" style="display:inline;color:var(--clr-primary);">(you)</span>
+                <span class="meta-copy you-marker">(you)</span>
               <?php endif; ?>
             </span>
             <span class="leaderboard-list__points"><?= (int)$r['points'] ?> pts</span>

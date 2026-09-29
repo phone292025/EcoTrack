@@ -1,60 +1,13 @@
 <?php
-require_once __DIR__ . '/../database/db.php';
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/bootstrap.php';
 
 requireRole('participant');
 
 $uid = currentUserId();
-$pdo = getPDO();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_goal') {
     validateCsrf($_POST['csrf'] ?? '');
-    $target = (int)($_POST['target'] ?? 0);
-    $period = $_POST['period'] ?? 'weekly';
-
-    if ($target < 10) {
-        setFlash('error', 'Goal target must be at least 10 points.');
-    } elseif (!in_array($period, ['weekly', 'monthly'], true)) {
-        setFlash('error', 'Please choose a valid goal period.');
-    } else {
-        // dbTodayObject() so the goal window lines up with the CURDATE()
-        // comparisons that decide whether a goal is currently active.
-        $startDate = dbTodayObject();
-        $endDate = $period === 'monthly'
-            ? $startDate->modify('+29 days')
-            : $startDate->modify('+6 days');
-
-        $pdo->beginTransaction();
-        try {
-            $pdo->prepare(
-                'UPDATE goals
-                 SET end_date = DATE_SUB(CURDATE(), INTERVAL 1 DAY)
-                 WHERE user_id = ?
-                   AND start_date <= CURDATE()
-                   AND end_date >= CURDATE()'
-            )->execute([$uid]);
-
-            $pdo->prepare(
-                'INSERT INTO goals (user_id, target, period, start_date, end_date)
-                 VALUES (?, ?, ?, ?, ?)'
-            )->execute([
-                $uid,
-                $target,
-                $period,
-                $startDate->format('Y-m-d'),
-                $endDate->format('Y-m-d'),
-            ]);
-
-            $pdo->commit();
-            setFlash('success', 'Goal saved successfully.');
-        } catch (Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            throw $e;
-        }
-    }
+    flashResult(saveGoal($uid, (int)($_POST['target'] ?? 0), (string)($_POST['period'] ?? 'weekly')));
 
     // Redirect so refreshing the page cannot create a second goal.
     redirectToSelf();
@@ -72,7 +25,7 @@ $tips           = getRecentEcoTips(3);
 $checkedInToday = hasCheckedInToday($uid);
 
 $pageTitle   = 'Dashboard';
-$needsCharts = !empty($goal);
+$pageScripts = ['checkin.js', 'charts.js'];
 require_once __DIR__ . '/../layout/header.php';
 ?>
 
@@ -88,12 +41,7 @@ require_once __DIR__ . '/../layout/header.php';
     </div>
   </section>
 
-  <?php foreach ($flash['error'] as $message): ?>
-    <div class="flash-message flash-error" role="alert"><?= sanitise($message) ?></div>
-  <?php endforeach; ?>
-  <?php foreach ($flash['success'] as $message): ?>
-    <div class="flash-message flash-success" role="status"><?= sanitise($message) ?></div>
-  <?php endforeach; ?>
+  <?php renderFlash($flash); ?>
 
   <div class="dashboard-grid participant-dashboard-kpis">
     <div class="stat-widget">
@@ -130,8 +78,8 @@ require_once __DIR__ . '/../layout/header.php';
     <div class="panel-stack participant-dashboard-main">
       <div class="card participant-dashboard-checkin">
         <h2 class="card-title">Daily check-in</h2>
-        <p class="card-copy participant-dashboard-checkin__copy">Check in once per day for +5 points and to keep your streak moving.</p>
-        <form id="checkinForm" class="dashboard-checkin">
+        <p class="card-copy participant-dashboard-checkin__copy">Check in once per day for +<?= POINTS_DAILY_CHECKIN ?> points and to keep your streak moving.</p>
+        <form id="checkinForm" class="dashboard-checkin" method="POST" action="<?= BASE_URL ?>/ajax/checkin.php">
           <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">
           <button type="submit" class="btn btn-primary participant-dashboard-checkin__button"
                   id="checkinBtn" <?= $checkedInToday ? 'disabled' : '' ?>>
@@ -161,7 +109,7 @@ require_once __DIR__ . '/../layout/header.php';
             <div class="progress-bar" role="progressbar"
                  aria-valuenow="<?= (int)$goal['percent'] ?>" aria-valuemin="0" aria-valuemax="100"
                  aria-label="Goal progress">
-              <div id="goalProgressBar" class="progress-fill" style="width:<?= (int)$goal['percent'] ?>%;"></div>
+              <div id="goalProgressBar" class="progress-fill" data-percent="<?= (int)$goal['percent'] ?>" style="width:<?= (int)$goal['percent'] ?>%;"></div>
             </div>
             <p id="goalProgressLabel" class="participant-dashboard-goal-label">
               <?= (int)$goal['points_in_period'] ?> / <?= (int)$goal['target'] ?> points &middot; <?= (int)$goal['percent'] ?>% complete
@@ -178,7 +126,7 @@ require_once __DIR__ . '/../layout/header.php';
           <div class="form-grid-2">
             <div class="form-group participant-dashboard-form-group">
               <label for="goal_target">Target points</label>
-              <input type="number" id="goal_target" name="target" min="10" value="<?= !empty($goal) ? (int)$goal['target'] : 100 ?>">
+              <input type="number" id="goal_target" name="target" min="<?= GOAL_TARGET_MIN ?>" max="<?= GOAL_TARGET_MAX ?>" value="<?= !empty($goal) ? (int)$goal['target'] : 100 ?>">
             </div>
             <div class="form-group participant-dashboard-form-group">
               <label for="goal_period">Period</label>
@@ -259,6 +207,9 @@ require_once __DIR__ . '/../layout/header.php';
               <div class="info-list__item">
                 <strong class="info-list__title"><?= sanitise($announcement['title']) ?></strong>
                 <p class="info-list__meta"><?= sanitise($announcement['created_at']) ?></p>
+                <?php if (!empty($announcement['body'])): ?>
+                  <p class="info-list__body"><?= nl2br(sanitise($announcement['body'])) ?></p>
+                <?php endif; ?>
               </div>
             <?php endforeach; ?>
           </div>
@@ -283,61 +234,5 @@ require_once __DIR__ . '/../layout/header.php';
     </div>
   </div>
 </div>
-
-<script>
-(function () {
-  const form = document.getElementById('checkinForm');
-  const msg = document.getElementById('checkinMsg');
-  const btn = document.getElementById('checkinBtn');
-  const ptsEl = document.getElementById('dashPoints');
-  if (!form || !msg || !btn) return;
-
-  form.addEventListener('submit', async function (e) {
-    e.preventDefault();
-    if (btn.disabled) return;
-
-    msg.textContent = '';
-    msg.className = 'participant-dashboard-checkin__message';
-    btn.disabled = true;
-
-    try {
-      const fd = new FormData(form);
-      const res = await fetch('<?= BASE_URL ?>/ajax/checkin.php', {
-        method: 'POST',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        body: fd,
-        credentials: 'same-origin'
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        msg.classList.add('is-success');
-        msg.textContent = data.message || 'Checked in!';
-        btn.textContent = 'Checked in today';
-        if (ptsEl && data.new_points != null) ptsEl.textContent = data.new_points;
-        const badge = document.getElementById('navPointsBadge');
-        if (badge && data.new_points != null) badge.textContent = data.new_points + ' pts';
-      } else {
-        msg.classList.add('is-error');
-        msg.textContent = data.message || 'Check-in failed.';
-        // Already checked in is a permanent state for today; anything else
-        // is worth letting them retry.
-        btn.disabled = res.status === 409;
-      }
-    } catch (err) {
-      msg.classList.add('is-error');
-      msg.textContent = 'Network error. Try again.';
-      btn.disabled = false;
-    }
-  });
-})();
-</script>
-
-<?php if (!empty($goal)): ?>
-  <script>
-  const GOAL_PERCENT = <?= (int)$goal['percent'] ?>;
-  </script>
-  <script src="<?= BASE_URL ?>/assets/js/charts.js"></script>
-<?php endif; ?>
 
 <?php require_once __DIR__ . '/../layout/footer.php'; ?>

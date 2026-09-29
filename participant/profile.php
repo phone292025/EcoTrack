@@ -1,7 +1,5 @@
 <?php
-require_once __DIR__ . '/../database/db.php';
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/bootstrap.php';
 
 requireRole('participant');
 
@@ -13,10 +11,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'update_profile') {
-        $email = trim($_POST['email'] ?? '');
+        $email = trim((string)($_POST['email'] ?? ''));
 
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            setFlash('error', 'Please enter a valid email address.');
+        if (($problem = emailProblem($email)) !== null) {
+            setFlash('error', $problem);
         } else {
             try {
                 $pdo->prepare('UPDATE users SET email = ? WHERE user_id = ?')
@@ -32,9 +30,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } elseif ($action === 'change_password') {
-        $current = $_POST['current_password'] ?? '';
-        $new     = $_POST['new_password'] ?? '';
-        $confirm = $_POST['confirm_password'] ?? '';
+        $current = (string)($_POST['current_password'] ?? '');
+        $new     = (string)($_POST['new_password'] ?? '');
+        $confirm = (string)($_POST['confirm_password'] ?? '');
 
         $stmt = $pdo->prepare('SELECT password FROM users WHERE user_id = ?');
         $stmt->execute([$uid]);
@@ -42,16 +40,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!password_verify($current, $hash)) {
             setFlash('error', 'Your current password is not correct.');
-        } elseif (strlen($new) < 8) {
-            setFlash('error', 'New password must be at least 8 characters.');
-        } elseif (!preg_match('/[A-Z]/', $new) || !preg_match('/[0-9]/', $new)) {
-            setFlash('error', 'New password must include an uppercase letter and a number.');
+        } elseif (($problem = passwordProblem($new)) !== null) {
+            setFlash('error', $problem);
         } elseif ($new !== $confirm) {
             setFlash('error', 'New passwords do not match.');
         } else {
-            $pdo->prepare('UPDATE users SET password = ? WHERE user_id = ?')
-                ->execute([password_hash($new, PASSWORD_DEFAULT), $uid]);
-            setFlash('success', 'Password changed.');
+            $newHash = password_hash($new, PASSWORD_DEFAULT);
+            $pdo->prepare('UPDATE users SET password = ? WHERE user_id = ?')->execute([$newHash, $uid]);
+            // Keeps this session signed in; any other session using the old
+            // password is logged out on its next request.
+            rememberPasswordChange($newHash);
+            setFlash('success', 'Password changed. Any other devices signed in to your account have been logged out.');
         }
     } elseif ($action === 'update_avatar') {
         if (empty($_FILES['avatar']['name'])
@@ -71,9 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ->execute([$stored, $uid]);
 
                 // Remove the replaced file so the folder does not grow forever.
-                if ($oldAvatar !== '' && preg_match('/^[a-f0-9]{32}\.[a-z]{3,4}$/i', $oldAvatar)) {
-                    @unlink(__DIR__ . '/../uploads/avatars/' . $oldAvatar);
-                }
+                deleteUpload('avatars', $oldAvatar);
 
                 setFlash('success', 'Profile picture updated.');
             }
@@ -101,6 +98,7 @@ foreach ($badges as $badge) {
 
 $pageTitle   = 'Profile';
 $needsCharts = true;
+$pageScripts = ['charts.js'];
 require_once __DIR__ . '/../layout/header.php';
 ?>
 
@@ -112,12 +110,7 @@ require_once __DIR__ . '/../layout/header.php';
     <span class="badge badge-blue"><?= (int)($user['points'] ?? 0) ?> pts</span>
   </div>
 
-  <?php foreach ($flash['error'] as $message): ?>
-    <div class="flash-message flash-error" role="alert"><?= sanitise($message) ?></div>
-  <?php endforeach; ?>
-  <?php foreach ($flash['success'] as $message): ?>
-    <div class="flash-message flash-success" role="status"><?= sanitise($message) ?></div>
-  <?php endforeach; ?>
+  <?php renderFlash($flash); ?>
 
   <div class="dashboard-grid profile-stats-grid">
     <div class="stat-widget">
@@ -168,7 +161,7 @@ require_once __DIR__ . '/../layout/header.php';
         <div class="profile-avatar-row">
           <div class="profile-avatar">
             <?php if (!empty($user['avatar'])): ?>
-              <img src="<?= BASE_URL ?>/uploads/avatars/<?= sanitise($user['avatar']) ?>"
+              <img src="<?= sanitise(avatarUrl($user['avatar'])) ?>"
                    alt="Your profile picture" width="72" height="72">
             <?php else: ?>
               <span class="profile-avatar__initial" aria-hidden="true">
@@ -305,9 +298,6 @@ require_once __DIR__ . '/../layout/header.php';
   </div>
 </div>
 
-<script>
-const CO2_DATA = <?= json_encode($co2Data, JSON_UNESCAPED_SLASHES) ?>;
-</script>
-<script src="<?= BASE_URL ?>/assets/js/charts.js"></script>
+<script type="application/json" id="co2Data"><?= jsonForHtml($co2Data) ?></script>
 
 <?php require_once __DIR__ . '/../layout/footer.php'; ?>

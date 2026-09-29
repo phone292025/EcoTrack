@@ -2,9 +2,18 @@
 /**
  * EcoTrack — Shared Page Footer
  * File: layout/footer.php
+ *
+ * Loads main.js, then any page scripts listed in $pageScripts.
  */
+// Only ever included by a page; see layout/header.php.
+if (!function_exists('currentRole')) {
+    http_response_code(404);
+    exit;
+}
+
 require_once __DIR__ . '/../includes/paths.php';
-$footerRole = $_SESSION['role'] ?? 'guest';
+$footerRole  = currentRole() ?: 'guest';
+$pageScripts = $pageScripts ?? [];
 ?>
 </main><!-- /#mainContent -->
 
@@ -35,5 +44,8 @@ $footerRole = $_SESSION['role'] ?? 'guest';
 </footer>
 
 <script src="<?= BASE_URL ?>/assets/js/main.js"></script>
+<?php foreach ($pageScripts as $script): ?>
+  <script src="<?= BASE_URL ?>/assets/js/<?= sanitise($script) ?>"></script>
+<?php endforeach; ?>
 </body>
 </html>

@@ -1,28 +1,48 @@
 <?php
-require_once __DIR__ . '/paths.php';
-
 /**
- * EcoTrack — Authentication & Session Helpers
+ * EcoTrack — Sessions, authentication, CSRF, flash messages and redirects.
  * File: includes/auth.php
  *
- * Include this at the TOP of every protected page.
- * Example:
- *   require_once __DIR__ . '/../includes/auth.php';
+ * Pages do not include this directly. They load includes/bootstrap.php,
+ * which starts the session and then protects the page:
+ *
+ *   require_once __DIR__ . '/../includes/bootstrap.php';
  *   requireRole('participant');          // only participants
  *   requireRole('moderator', 'admin');   // moderators OR admins
  */
 
-if (session_status() === PHP_SESSION_NONE) {
-    // Harden the session cookie before the session starts.
-    // HttpOnly keeps JavaScript away from the session id, SameSite blocks
-    // the cookie from riding along on cross-site requests, and Secure is
-    // enabled automatically when the page is served over HTTPS.
-    $isHttps = (!empty($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) !== 'off')
+require_once __DIR__ . '/paths.php';
+
+const LOGIN_MAX_ATTEMPTS_PER_ACCOUNT = 5;
+const LOGIN_MAX_ATTEMPTS_PER_IP      = 20;
+const LOGIN_LOCKOUT_MINUTES          = 15;
+const SESSION_IDLE_MINUTES           = 120;
+
+/* =============================================================
+ *  SESSION
+ * ============================================================*/
+
+/**
+ * Start the session with a hardened cookie. HttpOnly keeps JavaScript away
+ * from the session id, SameSite blocks the cookie from riding along on
+ * cross-site requests, Secure is on whenever the page is served over HTTPS,
+ * and strict mode refuses session ids the server never issued.
+ */
+function startSecureSession(): void
+{
+    if (session_status() !== PHP_SESSION_NONE) {
+        return;
+    }
+
+    $isHttps = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
         || (int)($_SERVER['SERVER_PORT'] ?? 0) === 443;
 
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1');
+    session_name('ECOTRACKSESSID');
     session_set_cookie_params([
         'lifetime' => 0,
-        'path'     => '/',
+        'path'     => BASE_URL !== '' ? BASE_URL . '/' : '/',
         'domain'   => '',
         'secure'   => $isHttps,
         'httponly' => true,
@@ -32,36 +52,108 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-/* -------------------------------------------------------
- * requireRole()
- * Redirect to login if not authenticated.
- * Redirect to 403 if authenticated but wrong role.
- * -------------------------------------------------------*/
-function requireRole(string ...$roles): void
+/**
+ * A short fingerprint of the user's current password hash, kept in the
+ * session. Changing the password changes the hash, so every other session
+ * signed in with the old password stops matching and is logged out.
+ */
+function sessionFingerprint(string $passwordHash): string
+{
+    return hash('sha256', 'ecotrack-session|' . $passwordHash);
+}
+
+/**
+ * Check the signed-in user against the database on every request.
+ *
+ * The session only remembers who logged in. Whether they may still act, and
+ * in which role, is the database's call: an account that was deleted, had
+ * its password changed, or sat idle too long is logged out here, and a role
+ * change by an admin takes effect on the user's very next click.
+ */
+function syncSessionUser(): void
 {
     if (!isset($_SESSION['user_id'])) {
-        header('Location: ' . BASE_URL . '/login.php');
-        exit;
+        return;
     }
 
-    if (!in_array($_SESSION['role'], $roles, true)) {
-        http_response_code(403);
-        include __DIR__ . '/../layout/403.php';   // simple "Access Denied" page
-        exit;
+    $lastSeen = (int)($_SESSION['last_seen'] ?? 0);
+    if ($lastSeen > 0 && time() - $lastSeen > SESSION_IDLE_MINUTES * 60) {
+        endSession('You were logged out after ' . (SESSION_IDLE_MINUTES / 60) . ' hours of inactivity. Please log in again.');
+        return;
+    }
+
+    $stmt = getPDO()->prepare('SELECT username, role, points, password FROM users WHERE user_id = ?');
+    $stmt->execute([(int)$_SESSION['user_id']]);
+    $user = $stmt->fetch();
+
+    if (!$user || !hash_equals((string)($_SESSION['auth_fp'] ?? ''), sessionFingerprint((string)$user['password']))) {
+        endSession('Your session has ended. Please log in again.');
+        return;
+    }
+
+    $_SESSION['username']  = $user['username'];
+    $_SESSION['role']      = $user['role'];
+    $_SESSION['points']    = (int)$user['points'];
+    $_SESSION['last_seen'] = time();
+}
+
+/**
+ * Sign the user out but keep a fresh, empty session so a message can be
+ * shown on the next page.
+ */
+function endSession(string $message = ''): void
+{
+    $_SESSION = [];
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_regenerate_id(true);
+    }
+    if ($message !== '') {
+        setFlash('error', $message);
     }
 }
 
-/* -------------------------------------------------------
- * isLoggedIn()
- * -------------------------------------------------------*/
+/**
+ * Called after password_verify() succeeds in login.php.
+ */
+function loginUser(array $user): void
+{
+    // A new session id prevents session fixation, and a new CSRF token means
+    // a token seen before login is worthless after it.
+    session_regenerate_id(true);
+    unset($_SESSION['csrf_token']);
+
+    $_SESSION['user_id']   = (int)$user['user_id'];
+    $_SESSION['username']  = $user['username'];
+    $_SESSION['role']      = $user['role'];
+    $_SESSION['points']    = (int)($user['points'] ?? 0);
+    $_SESSION['auth_fp']   = sessionFingerprint((string)$user['password']);
+    $_SESSION['last_seen'] = time();
+}
+
+/**
+ * After the signed-in user changes their own password: keep this session
+ * valid while every other session for the account is logged out.
+ */
+function rememberPasswordChange(string $newHash): void
+{
+    session_regenerate_id(true);
+    $_SESSION['auth_fp'] = sessionFingerprint($newHash);
+}
+
+function logoutUser(): void
+{
+    endSession();
+}
+
+/* =============================================================
+ *  WHO IS SIGNED IN
+ * ============================================================*/
+
 function isLoggedIn(): bool
 {
     return isset($_SESSION['user_id']);
 }
 
-/* -------------------------------------------------------
- * currentUserId() / currentRole()
- * -------------------------------------------------------*/
 function currentUserId(): int
 {
     return (int)($_SESSION['user_id'] ?? 0);
@@ -69,7 +161,7 @@ function currentUserId(): int
 
 function currentRole(): string
 {
-    return $_SESSION['role'] ?? '';
+    return (string)($_SESSION['role'] ?? '');
 }
 
 /**
@@ -82,8 +174,8 @@ function currentUsername(): string
 }
 
 /**
- * Points balance cached in the session so shared layout does not have to
- * query the database on every single page render.
+ * Points balance cached in the session. syncSessionUser() refreshes it on
+ * every request, and awardPoints() updates it as soon as it changes.
  */
 function currentPoints(): int
 {
@@ -91,61 +183,56 @@ function currentPoints(): int
 }
 
 /**
- * Keep the cached balance in step after anything that moves points.
+ * Stop unless the signed-in user has one of the given roles.
+ * Guests go to the login page; the wrong role gets a 403.
  */
-function refreshSessionPoints(?int $points = null): void
+function requireRole(string ...$roles): void
 {
-    if ($points !== null) {
-        $_SESSION['points'] = $points;
-        return;
+    if (!isLoggedIn()) {
+        if (wantsJson()) {
+            jsonResponse(false, ['message' => 'Please log in again.'], 401);
+        }
+        redirectTo('/login.php');
     }
 
-    if (!isset($_SESSION['user_id'])) {
-        return;
+    if (!in_array(currentRole(), $roles, true)) {
+        if (wantsJson()) {
+            jsonResponse(false, ['message' => 'Not authorised.'], 403);
+        }
+        http_response_code(403);
+        include __DIR__ . '/../layout/403.php';
+        exit;
     }
-
-    $stmt = getPDO()->prepare('SELECT points FROM users WHERE user_id = ?');
-    $stmt->execute([(int)$_SESSION['user_id']]);
-    $_SESSION['points'] = (int)($stmt->fetchColumn() ?: 0);
 }
 
-/* -------------------------------------------------------
- * loginUser()
- * Called after password_verify() succeeds in login.php
- * -------------------------------------------------------*/
-function loginUser(array $user): void
+/**
+ * Send the user to their dashboard after login.
+ */
+function redirectByRole(): never
 {
-    // Prevent session fixation
-    session_regenerate_id(true);
+    $map = [
+        'admin'       => '/admin/dashboard.php',
+        'moderator'   => '/moderator/dashboard.php',
+        'participant' => '/participant/dashboard.php',
+    ];
 
-    $_SESSION['user_id']  = (int)$user['user_id'];
-    $_SESSION['username'] = $user['username'];
-    $_SESSION['role']     = $user['role'];
-    $_SESSION['points']   = (int)($user['points'] ?? 0);
+    redirectTo($map[currentRole()] ?? '/login.php');
 }
 
-/* -------------------------------------------------------
- * logoutUser()
- * -------------------------------------------------------*/
-function logoutUser(): void
+/** Did the browser ask for JSON (the check-in button's fetch() call)? */
+function wantsJson(): bool
 {
-    $_SESSION = [];
-    if (ini_get('session.use_cookies')) {
-        $params = session_get_cookie_params();
-        setcookie(
-            session_name(), '', time() - 42000,
-            $params['path'], $params['domain'],
-            $params['secure'], $params['httponly']
-        );
-    }
-    session_destroy();
+    return ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest'
+        || str_contains((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json');
 }
 
-/* -------------------------------------------------------
- * CSRF Token Generation & Validation
- * Usage (in form):  <input type="hidden" name="csrf" value="<?= csrfToken() ?>">
- * Usage (handler):  validateCsrf($_POST['csrf'] ?? '');
- * -------------------------------------------------------*/
+/* =============================================================
+ *  CSRF
+ *
+ *  Form:    <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">
+ *  Handler: validateCsrf($_POST['csrf'] ?? '');
+ * ============================================================*/
+
 function csrfToken(): string
 {
     if (empty($_SESSION['csrf_token'])) {
@@ -154,21 +241,24 @@ function csrfToken(): string
     return $_SESSION['csrf_token'];
 }
 
-function validateCsrf(string $token): void
+function validateCsrf(mixed $token): void
 {
-    if (!hash_equals(csrfToken(), $token)) {
+    if (!is_string($token) || !hash_equals(csrfToken(), $token)) {
+        if (wantsJson()) {
+            jsonResponse(false, ['message' => 'Your session expired. Refresh the page and try again.'], 403);
+        }
         http_response_code(403);
-        exit('Invalid request token. Please go back and try again.');
+        exit('Invalid request token. Please go back, refresh the page and try again.');
     }
 }
 
-/* -------------------------------------------------------
- * FLASH MESSAGES + POST/REDIRECT/GET
+/* =============================================================
+ *  FLASH MESSAGES + POST/REDIRECT/GET
  *
- * Every POST handler should finish with a redirect so that refreshing the
- * page cannot replay the submission. Messages survive the redirect in the
- * session and are consumed exactly once by the page that renders them.
- * -------------------------------------------------------*/
+ *  Every POST handler finishes with a redirect so that refreshing the page
+ *  cannot replay the submission. Messages survive the redirect in the
+ *  session and are consumed exactly once by the page that renders them.
+ * ============================================================*/
 
 /**
  * Queue a message for the next page render.
@@ -181,6 +271,14 @@ function setFlash(string $type, string $message): void
         $type = 'success';
     }
     $_SESSION['flash'][$type][] = $message;
+}
+
+/**
+ * Queue the outcome of a domain action: {ok: bool, message: string}.
+ */
+function flashResult(array $result): void
+{
+    setFlash(!empty($result['ok']) ? 'success' : 'error', (string)($result['message'] ?? ''));
 }
 
 /**
@@ -216,18 +314,16 @@ function takeFormOld(): array
 }
 
 /**
- * Redirect and stop. Relative targets are resolved against BASE_URL.
+ * Redirect within the application and stop. Targets are paths relative to
+ * the project root, e.g. '/login.php'.
  */
 function redirectTo(string $target): never
 {
-    if (!preg_match('#^https?://#i', $target)) {
-        if ($target === '' || $target[0] !== '/') {
-            $target = '/' . $target;
-        }
-        $target = BASE_URL . $target;
+    if ($target === '' || $target[0] !== '/') {
+        $target = '/' . $target;
     }
 
-    header('Location: ' . $target);
+    header('Location: ' . BASE_URL . $target);
     exit;
 }
 
@@ -237,19 +333,25 @@ function redirectTo(string $target): never
 function redirectToSelf(string $query = ''): never
 {
     $path = strtok($_SERVER['REQUEST_URI'] ?? '/', '?') ?: '/';
+
+    // REQUEST_URI already includes the base path, so strip it before
+    // redirectTo() adds it back.
+    if (BASE_URL !== '' && str_starts_with($path, BASE_URL . '/')) {
+        $path = substr($path, strlen(BASE_URL));
+    }
+
     redirectTo($path . ($query !== '' ? '?' . ltrim($query, '?') : ''));
 }
 
-/* -------------------------------------------------------
- * LOGIN THROTTLING
+/* =============================================================
+ *  LOGIN THROTTLING
  *
- * Repeated failures against the same identifier or the same IP address are
- * recorded and blocked for a cool-off window. This is what stops a script
- * from working through a password list.
- * -------------------------------------------------------*/
-
-const LOGIN_MAX_ATTEMPTS = 5;
-const LOGIN_LOCKOUT_MINUTES = 15;
+ *  Failed logins are recorded per account and per IP address. Five misses on
+ *  one account lock that account for fifteen minutes. The per-IP limit is
+ *  higher, because a campus network puts many honest people behind one
+ *  address, but it still stops one machine from spraying guesses across
+ *  many accounts.
+ * ============================================================*/
 
 function clientIp(): string
 {
@@ -257,64 +359,62 @@ function clientIp(): string
 }
 
 /**
- * Number of failed attempts inside the current window, counted across both
- * the identifier being tried and the IP address doing the trying.
+ * The throttle key for a login attempt. An existing account is keyed by its
+ * id, so typing the username or the email counts against the same limit.
  */
-function loginFailureCount(string $identifier): int
+function loginThrottleKey(string $identifier, ?array $user): string
+{
+    return $user ? 'user:' . (int)$user['user_id'] : 'name:' . mb_strtolower(trim($identifier));
+}
+
+/**
+ * Failed attempts on this account inside the current window.
+ */
+function loginFailureCount(string $key): int
 {
     $stmt = getPDO()->prepare(
         'SELECT COUNT(*)
          FROM login_attempts
-         WHERE attempted_at >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
-           AND (identifier = ? OR ip_address = ?)'
+         WHERE identifier = ? AND attempted_at >= DATE_SUB(NOW(), INTERVAL ? MINUTE)'
     );
-    $stmt->execute([LOGIN_LOCKOUT_MINUTES, $identifier, clientIp()]);
+    $stmt->execute([substr($key, 0, 100), LOGIN_LOCKOUT_MINUTES]);
 
     return (int)$stmt->fetchColumn();
 }
 
-function isLoginLocked(string $identifier): bool
+function isLoginLocked(string $key): bool
 {
-    return loginFailureCount($identifier) >= LOGIN_MAX_ATTEMPTS;
+    if (loginFailureCount($key) >= LOGIN_MAX_ATTEMPTS_PER_ACCOUNT) {
+        return true;
+    }
+
+    $stmt = getPDO()->prepare(
+        'SELECT COUNT(*)
+         FROM login_attempts
+         WHERE ip_address = ? AND attempted_at >= DATE_SUB(NOW(), INTERVAL ? MINUTE)'
+    );
+    $stmt->execute([clientIp(), LOGIN_LOCKOUT_MINUTES]);
+
+    return (int)$stmt->fetchColumn() >= LOGIN_MAX_ATTEMPTS_PER_IP;
 }
 
-function recordLoginFailure(string $identifier): void
+function recordLoginFailure(string $key): void
 {
-    $stmt = getPDO()->prepare(
-        'INSERT INTO login_attempts (identifier, ip_address) VALUES (?, ?)'
-    );
-    $stmt->execute([substr($identifier, 0, 100), clientIp()]);
+    getPDO()->prepare('INSERT INTO login_attempts (identifier, ip_address) VALUES (?, ?)')
+        ->execute([substr($key, 0, 100), clientIp()]);
 }
 
 /**
- * Clear the slate after a successful login, and opportunistically drop rows
- * that have aged out of every window.
+ * Clear this account's failures after a successful login, and drop rows that
+ * have aged out of every window.
+ *
+ * Only this account's rows. Clearing everything recorded for the IP address
+ * would let someone reset the counter against another account by logging
+ * into their own in between guesses.
  */
-function clearLoginFailures(string $identifier): void
+function clearLoginFailures(string $key): void
 {
     $pdo = getPDO();
-    $stmt = $pdo->prepare(
-        'DELETE FROM login_attempts WHERE identifier = ? OR ip_address = ?'
-    );
-    $stmt->execute([substr($identifier, 0, 100), clientIp()]);
-
-    $pdo->prepare(
-        'DELETE FROM login_attempts WHERE attempted_at < DATE_SUB(NOW(), INTERVAL 1 DAY)'
-    )->execute();
-}
-
-/* -------------------------------------------------------
- * redirectByRole()
- * Send user to their correct dashboard after login.
- * -------------------------------------------------------*/
-function redirectByRole(): void
-{
-    $map = [
-        'admin'       => BASE_URL . '/admin/dashboard.php',
-        'moderator'   => BASE_URL . '/moderator/dashboard.php',
-        'participant' => BASE_URL . '/participant/dashboard.php',
-    ];
-    $dest = $map[$_SESSION['role']] ?? BASE_URL . '/login.php';
-    header('Location: ' . $dest);
-    exit;
+    $pdo->prepare('DELETE FROM login_attempts WHERE identifier = ?')->execute([substr($key, 0, 100)]);
+    $pdo->exec('DELETE FROM login_attempts WHERE attempted_at < DATE_SUB(NOW(), INTERVAL 1 DAY)');
 }

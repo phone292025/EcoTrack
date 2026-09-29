@@ -10,7 +10,9 @@
  * meant the running application could alter its own schema — it now happens
  * here, once, during setup.
  *
- * For a brand new database, import database/ecotrack.sql first.
+ * Any table missing from the database is created from database/ecotrack.sql,
+ * so this also works on an empty database. Importing the SQL file is still
+ * the quickest start because it seeds everything in one go.
  */
 
 if (PHP_SAPI !== 'cli') {
@@ -19,6 +21,8 @@ if (PHP_SAPI !== 'cli') {
 }
 
 require_once __DIR__ . '/../database/db.php';
+require_once __DIR__ . '/../includes/schema.php';
+require_once __DIR__ . '/../includes/rules.php';
 
 $pdo = getPDO();
 
@@ -26,10 +30,11 @@ echo "EcoTrack schema migration\n";
 echo "-------------------------\n";
 
 $changes = 0;
+$failures = 0;
 
 function step(string $label, callable $fn): void
 {
-    global $changes;
+    global $changes, $failures;
 
     try {
         $didWork = $fn();
@@ -40,6 +45,7 @@ function step(string $label, callable $fn): void
             echo "  [ok]      {$label}\n";
         }
     } catch (Throwable $e) {
+        $failures++;
         echo "  [FAILED]  {$label}: " . $e->getMessage() . "\n";
     }
 }
@@ -143,6 +149,20 @@ step('users role sanity', function () use ($pdo) {
 });
 
 /* ------------------------------------------------------------------
+ * Tables missing entirely are created from the schema file
+ * ----------------------------------------------------------------*/
+
+foreach (schemaDefinition()['tables'] as $table => $createTable) {
+    step("{$table} table", function () use ($pdo, $table, $createTable) {
+        if (tableExists($pdo, $table)) {
+            return false;
+        }
+        $pdo->exec($createTable);
+        return true;
+    });
+}
+
+/* ------------------------------------------------------------------
  * New columns introduced by the current release
  * ----------------------------------------------------------------*/
 
@@ -162,19 +182,53 @@ step('challenges.target_count', function () use ($pdo) {
     return true;
 });
 
-step('login_attempts table', function () use ($pdo) {
-    if (tableExists($pdo, 'login_attempts')) {
+function foreignKeyDeleteRule(PDO $pdo, string $table, string $referencedTable): ?array
+{
+    $stmt = $pdo->prepare(
+        'SELECT CONSTRAINT_NAME, DELETE_RULE
+         FROM information_schema.REFERENTIAL_CONSTRAINTS
+         WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = ? AND REFERENCED_TABLE_NAME = ?'
+    );
+    $stmt->execute([$table, $referencedTable]);
+
+    return $stmt->fetch() ?: null;
+}
+
+/* ------------------------------------------------------------------
+ * Redemption fulfilment
+ * ----------------------------------------------------------------*/
+
+step('redemptions.status', function () use ($pdo) {
+    if (!tableExists($pdo, 'redemptions') || columnExists($pdo, 'redemptions', 'status')) {
         return false;
     }
     $pdo->exec(
-        'CREATE TABLE login_attempts (
-            attempt_id INT AUTO_INCREMENT PRIMARY KEY,
-            identifier VARCHAR(100) NOT NULL,
-            ip_address VARCHAR(45) NOT NULL,
-            attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_login_identifier (identifier, attempted_at),
-            INDEX idx_login_ip (ip_address, attempted_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        "ALTER TABLE redemptions
+         ADD COLUMN status ENUM('pending','fulfilled','cancelled') NOT NULL DEFAULT 'pending' AFTER points_spent,
+         ADD COLUMN handled_by INT DEFAULT NULL AFTER status,
+         ADD COLUMN handled_at DATETIME DEFAULT NULL AFTER handled_by,
+         ADD INDEX idx_redemptions_status (status, redeemed_at),
+         ADD CONSTRAINT fk_redemptions_handled_by FOREIGN KEY (handled_by) REFERENCES users(user_id) ON DELETE SET NULL"
+    );
+    // Redemptions made before fulfilment was tracked are treated as handed
+    // over, so the new admin queue does not open with the whole history.
+    $count = $pdo->exec("UPDATE redemptions SET status = 'fulfilled'");
+    echo "            marked {$count} earlier redemption(s) as fulfilled\n";
+    return true;
+});
+
+step('deleting a reward keeps its redemption history', function () use ($pdo) {
+    if (!tableExists($pdo, 'redemptions')) {
+        return false;
+    }
+    $fk = foreignKeyDeleteRule($pdo, 'redemptions', 'rewards');
+    if ($fk === null || $fk['DELETE_RULE'] !== 'CASCADE') {
+        return false;
+    }
+    $pdo->exec('ALTER TABLE redemptions DROP FOREIGN KEY `' . $fk['CONSTRAINT_NAME'] . '`');
+    $pdo->exec(
+        'ALTER TABLE redemptions
+         ADD CONSTRAINT fk_redemptions_reward FOREIGN KEY (reward_id) REFERENCES rewards(reward_id) ON DELETE RESTRICT'
     );
     return true;
 });
@@ -182,6 +236,7 @@ step('login_attempts table', function () use ($pdo) {
 /* ------------------------------------------------------------------
  * Points ledger consistency
  * ----------------------------------------------------------------*/
+
 
 step('points_transactions.txn_id primary key', function () use ($pdo) {
     if (!tableExists($pdo, 'points_transactions')) {
@@ -234,6 +289,51 @@ step('points_transactions legacy delta backfill', function () use ($pdo) {
  * Reconcile balances against the ledger
  * ----------------------------------------------------------------*/
 
+step('points_transactions.kind', function () use ($pdo) {
+    if (!tableExists($pdo, 'points_transactions') || columnExists($pdo, 'points_transactions', 'kind')) {
+        return false;
+    }
+    $pdo->exec(
+        "ALTER TABLE points_transactions
+         ADD COLUMN kind VARCHAR(20) NOT NULL DEFAULT 'adjustment' AFTER delta,
+         ADD INDEX idx_txn_user_kind (user_id, kind, created_at)"
+    );
+
+    // Existing rows only had a reason, so read the kind back out of it.
+    $pdo->exec(
+        "UPDATE points_transactions
+         SET kind = CASE
+             WHEN reason = 'Activity approved'          THEN 'activity'
+             WHEN reason = 'Daily Check-in'             THEN 'checkin'
+             WHEN reason LIKE '%-Day Streak Bonus'      THEN 'streak_bonus'
+             WHEN reason = 'Goal Achieved Bonus'        THEN 'goal_bonus'
+             WHEN reason LIKE 'Challenge completed:%'   THEN 'challenge'
+             WHEN reason LIKE 'Redeemed:%'              THEN 'redemption'
+             WHEN reason LIKE 'Refund:%'                THEN 'refund'
+             ELSE 'adjustment'
+         END"
+    );
+    return true;
+});
+
+step('negative ledger totals corrected', function () use ($pdo) {
+    if (!tableExists($pdo, 'points_transactions') || !columnExists($pdo, 'points_transactions', 'kind')) {
+        return false;
+    }
+
+    // A balance cannot go below zero. Rather than clamp users.points and
+    // leave it disagreeing with the ledger, write the correction into the
+    // ledger itself so SUM(delta) and the balance still match.
+    $fixed = $pdo->exec(
+        "INSERT INTO points_transactions (user_id, delta, kind, reason)
+         SELECT user_id, -SUM(delta), 'adjustment', 'Ledger correction'
+         FROM points_transactions
+         GROUP BY user_id
+         HAVING SUM(delta) < 0"
+    );
+    return $fixed > 0;
+});
+
 step('users.points reconciled with ledger', function () use ($pdo) {
     if (!tableExists($pdo, 'users') || !tableExists($pdo, 'points_transactions')) {
         return false;
@@ -246,8 +346,8 @@ step('users.points reconciled with ledger', function () use ($pdo) {
              FROM points_transactions
              GROUP BY user_id
          ) t ON t.user_id = u.user_id
-         SET u.points = GREATEST(0, t.total)
-         WHERE u.points <> GREATEST(0, t.total)'
+         SET u.points = t.total
+         WHERE u.points <> t.total'
     );
 
     $fixed = $stmt->rowCount();
@@ -345,7 +445,34 @@ step('rewards seed', function () use ($pdo) {
     return true;
 });
 
+step('demo admin and moderator accounts', function () use ($pdo) {
+    if (!tableExists($pdo, 'users')) {
+        return false;
+    }
+    // Only when there is no way into the admin area at all. An existing
+    // install keeps whatever accounts and passwords it already has.
+    if ((int)$pdo->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn() > 0) {
+        return false;
+    }
+    $insert = $pdo->prepare(
+        'INSERT IGNORE INTO users (username, email, password, role) VALUES (?, ?, ?, ?)'
+    );
+    foreach (DEMO_ACCOUNTS as $account) {
+        $insert->execute([
+            $account['username'],
+            $account['email'],
+            password_hash($account['password'], PASSWORD_DEFAULT),
+            $account['role'],
+        ]);
+    }
+    return true;
+});
+
 echo "-------------------------\n";
+if ($failures > 0) {
+    echo "Migration finished with {$failures} failed step(s). Fix the errors above and run it again.\n";
+    exit(1);
+}
 echo $changes === 0
     ? "Schema already up to date.\n"
     : "Migration complete. {$changes} change(s) applied.\n";

@@ -1,52 +1,48 @@
 <?php
 /**
- * EcoTrack — Daily Check-in AJAX Endpoint
+ * EcoTrack — Daily check-in endpoint
  * File: ajax/checkin.php
  *
- * Expects: POST with csrf token
- * Returns: JSON {success, new_points, streak, message}
+ * Expects: POST with a CSRF token.
+ * From the dashboard's fetch() call (X-Requested-With: XMLHttpRequest) it
+ * answers with JSON {success, new_points, streak, message}. A plain form
+ * post, when JavaScript is off, gets a redirect back to the dashboard with
+ * the same message as a flash.
  */
+require_once __DIR__ . '/../includes/bootstrap.php';
 
-require_once __DIR__ . '/../database/db.php';
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/functions.php';
+$isAjax = wantsJson();
 
-// Only allow XHR POST requests
-if ($_SERVER['REQUEST_METHOD'] !== 'POST'
-    || ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') !== 'XMLHttpRequest') {
-    jsonResponse(false, ['message' => 'Invalid request.'], 400);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    $isAjax ? jsonResponse(false, ['message' => 'Invalid request.'], 405) : redirectTo('/participant/dashboard.php');
 }
 
-// Must be logged in as participant
-if (!isLoggedIn() || currentRole() !== 'participant') {
-    jsonResponse(false, ['message' => 'Not authorised.'], 403);
-}
-
-// Validate CSRF
+requireRole('participant');
 validateCsrf($_POST['csrf'] ?? '');
 
 $userId = currentUserId();
-
-try {
-    $checkedIn = dailyCheckIn($userId);
-} catch (Throwable $e) {
-    error_log('[EcoTrack checkin] ' . $e->getMessage());
-    jsonResponse(false, ['message' => 'Check-in could not be saved. Please try again.'], 500);
-}
+$checkedIn = dailyCheckIn($userId);
 
 if (!$checkedIn) {
-    // 409 Conflict — already done today, so the button should stay disabled.
-    jsonResponse(false, [
-        'message' => 'You have already checked in today. Come back tomorrow!',
-    ], 409);
+    $message = 'You have already checked in today. Come back tomorrow!';
+    if ($isAjax) {
+        // 409 Conflict: already done today, so the button should stay disabled.
+        jsonResponse(false, ['message' => $message], 409);
+    }
+    setFlash('error', $message);
+    redirectTo('/participant/dashboard.php');
 }
 
-// Fetch updated stats
 $user = getUserById($userId);
-refreshSessionPoints((int)($user['points'] ?? 0));
+$message = 'Check-in successful. +' . POINTS_DAILY_CHECKIN . ' pts';
+
+if (!$isAjax) {
+    setFlash('success', $message);
+    redirectTo('/participant/dashboard.php');
+}
 
 jsonResponse(true, [
     'new_points' => (int)($user['points'] ?? 0),
     'streak'     => (int)($user['streak'] ?? 0),
-    'message'    => 'Check-in successful. +5 pts',
+    'message'    => $message,
 ]);

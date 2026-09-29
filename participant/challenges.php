@@ -1,7 +1,5 @@
 <?php
-require_once __DIR__ . '/../database/db.php';
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/bootstrap.php';
 
 requireRole('participant');
 
@@ -12,37 +10,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
     $cid = (int)($_POST['join_challenge_id'] ?? 0);
 
-    if ($cid <= 0) {
-        setFlash('error', 'Invalid challenge selected.');
-        redirectTo('/participant/challenges.php');
-    }
+    $result = $cid > 0
+        ? joinChallenge($uid, $cid)
+        : ['ok' => false, 'message' => 'Invalid challenge selected.'];
+    flashResult($result);
 
-    // Refuse to join something that has already ended, even if the button was
-    // rendered before it expired or the id was posted by hand.
-    $live = $pdo->prepare(
-        'SELECT COUNT(*) FROM challenges c WHERE c.challenge_id = ? AND ' . liveChallengeCondition('c')
-    );
-    $live->execute([$cid]);
-
-    if ((int)$live->fetchColumn() === 0) {
-        setFlash('error', 'That challenge is no longer open to join.');
-        redirectTo('/participant/challenges.php');
-    }
-
-    try {
-        $pdo->prepare(
-            'INSERT INTO challenge_participants (challenge_id, user_id) VALUES (?, ?)'
-        )->execute([$cid, $uid]);
-
-        setFlash('success', 'Challenge joined. Submit a matching activity for moderator review to complete it.');
-        redirectTo('/participant/log_activity.php?challenge_id=' . $cid);
-    } catch (PDOException $e) {
-        if (isDuplicateKeyError($e)) {
-            setFlash('error', 'You have already joined this challenge.');
-            redirectTo('/participant/challenges.php');
-        }
-        throw $e;
-    }
+    redirectTo($result['ok']
+        ? '/participant/log_activity.php?challenge_id=' . $cid
+        : '/participant/challenges.php');
 }
 
 $flash = takeFlash();
@@ -78,7 +53,7 @@ $pageTitle = 'Challenges';
 require_once __DIR__ . '/../layout/header.php';
 ?>
 
-<div class="container page-shell" style="max-width:960px;">
+<div class="container page-shell container--md">
   <div class="section-header">
     <div>
       <h1 class="section-header__title">Challenges</h1>
@@ -86,12 +61,7 @@ require_once __DIR__ . '/../layout/header.php';
     <span class="badge badge-blue"><?= (int)($challengeStats['completed'] ?? 0) ?> completed</span>
   </div>
 
-  <?php foreach ($flash['error'] as $message): ?>
-    <div class="flash-message flash-error" role="alert"><?= sanitise($message) ?></div>
-  <?php endforeach; ?>
-  <?php foreach ($flash['success'] as $message): ?>
-    <div class="flash-message flash-success" role="status"><?= sanitise($message) ?></div>
-  <?php endforeach; ?>
+  <?php renderFlash($flash); ?>
 
   <div class="challenge-board">
     <?php if (empty($list)): ?>
@@ -119,7 +89,7 @@ require_once __DIR__ . '/../layout/header.php';
           <div class="reward-admin-card__body">
             <div class="reward-admin-card__top">
               <div>
-                <h2 class="reward-admin-card__name" style="font-size:1.4rem;"><?= sanitise($c['title']) ?></h2>
+                <h2 class="reward-admin-card__name challenge-card__title"><?= sanitise($c['title']) ?></h2>
                 <div class="reward-admin-card__meta">
                   <span class="reward-admin-card__chip reward-admin-card__chip--default"><?= sanitise($c['difficulty'] ?? 'easy') ?></span>
                   <span><?= (int)($c['points'] ?? 0) ?> pts</span>

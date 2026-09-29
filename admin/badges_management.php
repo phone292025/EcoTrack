@@ -1,7 +1,5 @@
 <?php
-require_once __DIR__ . '/../database/db.php';
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/bootstrap.php';
 
 requireRole('admin');
 
@@ -12,47 +10,59 @@ $badgeForm = [
     'criteria' => '',
 ];
 
+/**
+ * Check a badge form. Returns an error message, or null when it is fine.
+ */
+function badgeInputProblem(string $name, string $description, string $criteria): ?string
+{
+    if (mb_strlen($name) < 2 || isTooLong($name, BADGE_NAME_MAX)) {
+        return 'Badge name must be 2-' . BADGE_NAME_MAX . ' characters.';
+    }
+    if (isTooLong($description, BODY_MAX)) {
+        return 'Description must be ' . BODY_MAX . ' characters or fewer.';
+    }
+    if (!isValidBadgeCriteria($criteria)) {
+        return 'Criteria must be points>=N, streak>=N, logs>=N, goal_achieved, or left empty for a badge you award by hand.';
+    }
+    return null;
+}
+
+/** Tell the admin how many people a new or changed rule reached straight away. */
+function flashBackfill(int $badgeId): void
+{
+    $awarded = awardBadgeToQualifiedUsers($badgeId);
+    if ($awarded > 0) {
+        setFlash('success', $awarded . ' participant' . ($awarded === 1 ? '' : 's')
+            . ' already met the criteria and received the badge.');
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
     $action = $_POST['action'] ?? 'create';
+    $badgeId = (int)($_POST['badge_id'] ?? 0);
+    $name = trim((string)($_POST['name'] ?? ''));
+    $description = trim((string)($_POST['description'] ?? ''));
+    $criteria = trim((string)($_POST['criteria'] ?? ''));
 
     if ($action === 'create') {
-        $badgeForm = [
-            'name' => trim($_POST['name'] ?? ''),
-            'description' => trim($_POST['description'] ?? ''),
-            'criteria' => trim($_POST['criteria'] ?? ''),
-        ];
-
-        if (strlen($badgeForm['name']) < 2) {
-            setFlash('error', 'Badge name must be at least 2 characters.');
+        if (($problem = badgeInputProblem($name, $description, $criteria)) !== null) {
+            setFlash('error', $problem);
+            setFormOld(['name' => $name, 'description' => $description, 'criteria' => $criteria]);
         } else {
             $pdo->prepare(
                 'INSERT INTO badges (name, description, icon, criteria, created_by)
                  VALUES (?, ?, NULL, NULLIF(?, ""), ?)'
-            )->execute([
-                $badgeForm['name'],
-                $badgeForm['description'],
-                $badgeForm['criteria'],
-                currentUserId(),
-            ]);
+            )->execute([$name, $description, $criteria, currentUserId()]);
 
             setFlash('success', 'Badge created.');
-            $badgeForm = [
-                'name' => '',
-                'description' => '',
-                'criteria' => '',
-            ];
+            flashBackfill((int)$pdo->lastInsertId());
         }
     } elseif ($action === 'update') {
-        $badgeId = (int)($_POST['badge_id'] ?? 0);
-        $name = trim($_POST['name'] ?? '');
-        $description = trim($_POST['description'] ?? '');
-        $criteria = trim($_POST['criteria'] ?? '');
-
         if ($badgeId <= 0) {
             setFlash('error', 'Invalid badge selected.');
-        } elseif (strlen($name) < 2) {
-            setFlash('error', 'Badge name must be at least 2 characters.');
+        } elseif (($problem = badgeInputProblem($name, $description, $criteria)) !== null) {
+            setFlash('error', $problem);
         } else {
             $pdo->prepare(
                 'UPDATE badges
@@ -60,18 +70,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  WHERE badge_id = ?'
             )->execute([$name, $description, $criteria, $badgeId]);
             setFlash('success', 'Badge updated.');
+            flashBackfill($badgeId);
         }
     } elseif ($action === 'delete') {
-        $badgeId = (int)($_POST['badge_id'] ?? 0);
         if ($badgeId > 0) {
             $pdo->prepare('DELETE FROM badges WHERE badge_id = ?')->execute([$badgeId]);
             setFlash('success', 'Badge deleted.');
         } else {
             setFlash('error', 'Invalid badge selected.');
         }
-    }
+    } elseif ($action === 'award' || $action === 'revoke') {
+        $stmt = $pdo->prepare('SELECT user_id FROM users WHERE (username = ? OR email = ?) AND role = "participant"');
+        $stmt->execute([trim((string)($_POST['username'] ?? '')), trim((string)($_POST['username'] ?? ''))]);
+        $userId = (int)$stmt->fetchColumn();
 
-    setFormOld($badgeForm);
+        $badgeStmt = $pdo->prepare('SELECT name FROM badges WHERE badge_id = ?');
+        $badgeStmt->execute([$badgeId]);
+        $badgeName = (string)$badgeStmt->fetchColumn();
+
+        if ($badgeName === '') {
+            setFlash('error', 'Choose a badge.');
+        } elseif ($userId === 0) {
+            setFlash('error', 'No participant has that username or email.');
+        } elseif ($action === 'award') {
+            setFlash(
+                'success',
+                grantBadge($userId, $badgeId) ? '"' . $badgeName . '" awarded.' : 'That participant already has "' . $badgeName . '".'
+            );
+        } else {
+            flashResult(takeBackBadge($userId, $badgeId));
+        }
+    }
 
     // Redirect so refreshing cannot repeat the submission.
     redirectToSelf($_SERVER['QUERY_STRING'] ?? '');
@@ -84,7 +113,8 @@ if ($old) {
 }
 
 $badges = $pdo->query(
-    'SELECT b.*, u.username AS created_by_name
+    'SELECT b.*, u.username AS created_by_name,
+            (SELECT COUNT(*) FROM user_badges ub WHERE ub.badge_id = b.badge_id) AS holder_count
      FROM badges b
      LEFT JOIN users u ON u.user_id = b.created_by
      ORDER BY b.badge_id ASC'
@@ -157,12 +187,7 @@ require_once __DIR__ . '/../layout/header.php';
     </article>
   </section>
 
-  <?php foreach ($flash['error'] as $flashMessage): ?>
-    <div class="flash-message flash-error" role="alert"><?= sanitise($flashMessage) ?></div>
-  <?php endforeach; ?>
-  <?php foreach ($flash['success'] as $flashMessage): ?>
-    <div class="flash-message flash-success" role="status"><?= sanitise($flashMessage) ?></div>
-  <?php endforeach; ?>
+  <?php renderFlash($flash); ?>
 
   <section class="card reward-admin-studio">
     <div class="reward-admin-studio-layout">
@@ -182,7 +207,7 @@ require_once __DIR__ . '/../layout/header.php';
         <div class="reward-admin-form-grid badge-admin-form-grid">
           <div class="form-group reward-admin-form-group reward-admin-form-group--name">
             <label for="create_badge_name">Badge name</label>
-            <input type="text" id="create_badge_name" name="name" maxlength="100" value="<?= sanitise($badgeForm['name']) ?>" required placeholder="Eco Champion">
+            <input type="text" id="create_badge_name" name="name" maxlength="<?= BADGE_NAME_MAX ?>" value="<?= sanitise($badgeForm['name']) ?>" required placeholder="Eco Champion">
           </div>
 
           <div class="form-group reward-admin-form-group">
@@ -203,6 +228,32 @@ require_once __DIR__ . '/../layout/header.php';
       </form>
     </div>
   </section>
+
+  <?php if (!empty($badges)): ?>
+    <section class="card mb-4">
+      <h2 class="card-title">Award or take back a badge</h2>
+      <p class="card-copy">For badges with no criteria, or to correct a mistake. An automatic badge cannot be taken back while the participant still meets its rule, because it would be awarded again on their next points change.</p>
+      <form method="POST" class="badge-award-form mt-3">
+        <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">
+        <div class="form-group mb-0">
+          <label for="award_badge_id">Badge</label>
+          <select id="award_badge_id" name="badge_id" required>
+            <?php foreach ($badges as $badge): ?>
+              <option value="<?= (int)$badge['badge_id'] ?>"><?= sanitise($badge['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="form-group mb-0">
+          <label for="award_username">Participant username or email</label>
+          <input type="text" id="award_username" name="username" maxlength="<?= EMAIL_MAX ?>" required>
+        </div>
+        <div class="inline-actions">
+          <button type="submit" name="action" value="award" class="btn btn-primary">Award</button>
+          <button type="submit" name="action" value="revoke" class="btn btn-outline">Take back</button>
+        </div>
+      </form>
+    </section>
+  <?php endif; ?>
 
   <section class="reward-admin-board">
     <?php if (empty($badges)): ?>
@@ -241,8 +292,9 @@ require_once __DIR__ . '/../layout/header.php';
                   <td class="reward-admin-table__reward reward-admin-table__cell reward-admin-table__cell--reward" data-label="Badge">
                     <strong><?= sanitise($badge['name']) ?></strong>
                     <span><?= sanitise($badge['description'] ?: 'No description yet.') ?></span>
+                    <span class="meta-copy"><?= (int)$badge['holder_count'] ?> holder<?= (int)$badge['holder_count'] === 1 ? '' : 's' ?></span>
                   </td>
-                  <td class="reward-admin-table__cell badge-admin-table__cell badge-admin-table__cell--criteria" data-label="Criteria"><?= sanitise($criteria !== '' ? $criteria : 'Manual award or custom trigger') ?></td>
+                  <td class="reward-admin-table__cell badge-admin-table__cell badge-admin-table__cell--criteria" data-label="Criteria"><?= sanitise($criteria !== '' ? $criteria : 'Awarded by hand') ?></td>
                   <td class="reward-admin-table__cell badge-admin-table__cell badge-admin-table__cell--created" data-label="Created by"><?= sanitise($badge['created_by_name'] ?? 'System') ?></td>
                   <td class="reward-admin-table__cell reward-admin-table__cell--status" data-label="Status">
                     <span class="badge <?= $isAutomatic ? 'badge-green' : 'badge-grey' ?>">
@@ -258,7 +310,7 @@ require_once __DIR__ . '/../layout/header.php';
                         <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="badge_id" value="<?= (int)$badge['badge_id'] ?>">
-                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this badge?');">Delete</button>
+                        <button type="submit" class="btn btn-danger btn-sm" data-confirm="Delete this badge?">Delete</button>
                       </form>
                     </div>
                   </td>
@@ -283,7 +335,7 @@ require_once __DIR__ . '/../layout/header.php';
                           <div class="reward-admin-form-grid reward-admin-form-grid--table badge-admin-form-grid">
                             <div class="form-group reward-admin-form-group reward-admin-form-group--name">
                               <label for="edit_badge_name_<?= (int)$badge['badge_id'] ?>">Badge name</label>
-                              <input type="text" id="edit_badge_name_<?= (int)$badge['badge_id'] ?>" name="name" maxlength="100" value="<?= sanitise($badge['name']) ?>" required>
+                              <input type="text" id="edit_badge_name_<?= (int)$badge['badge_id'] ?>" name="name" maxlength="<?= BADGE_NAME_MAX ?>" value="<?= sanitise($badge['name']) ?>" required>
                             </div>
 
                             <div class="form-group reward-admin-form-group">

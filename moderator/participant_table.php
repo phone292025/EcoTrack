@@ -1,12 +1,17 @@
 <?php
-require_once __DIR__ . '/../database/db.php';
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/functions.php';
+/**
+ * EcoTrack — Participant table, shared by moderators and admins.
+ * admin/participant_table.php loads this same page.
+ */
+require_once __DIR__ . '/../includes/bootstrap.php';
 
 requireRole('moderator', 'admin');
 
+const PARTICIPANTS_PER_PAGE = 25;
+
 $pdo = getPDO();
-$search = trim($_GET['q'] ?? '');
+$search = trim((string)($_GET['q'] ?? ''));
+$area = currentRole() === 'admin' ? 'admin' : 'moderator';
 
 $totalParticipants = (int)$pdo->query(
     'SELECT COUNT(*) FROM users WHERE role = "participant"'
@@ -40,35 +45,14 @@ $highestStreak = (int)$pdo->query(
     'SELECT COALESCE(MAX(streak), 0) FROM users WHERE role = "participant"'
 )->fetchColumn();
 
-$sql = '
-    SELECT u.user_id, u.username, u.email, u.points, u.streak, u.created_at,
-           COUNT(DISTINCT CASE WHEN al.status = "approved" THEN al.log_id END) AS approved_logs,
-           COUNT(DISTINCT ub.badge_id) AS badge_count,
-           MAX(CASE WHEN al.status = "approved" THEN al.created_at END) AS last_approved_at,
-           MAX(dc.checkin_date) AS last_checkin
-    FROM users u
-    LEFT JOIN activity_logs al ON al.user_id = u.user_id
-    LEFT JOIN user_badges ub ON ub.user_id = u.user_id
-    LEFT JOIN daily_checkins dc ON dc.user_id = u.user_id
-    WHERE u.role = "participant"
-';
+$directory = getParticipantDirectory($search, (int)($_GET['page'] ?? 1), PARTICIPANTS_PER_PAGE);
+$participants = $directory['rows'];
+$currentPage = $directory['page'];
+$totalPages = $directory['pages'];
+$offset = ($currentPage - 1) * PARTICIPANTS_PER_PAGE;
 
-$params = [];
-if ($search !== '') {
-    $sql .= ' AND (u.username LIKE ? OR u.email LIKE ?)';
-    $like = '%' . $search . '%';
-    $params[] = $like;
-    $params[] = $like;
-}
-
-$sql .= '
-    GROUP BY u.user_id, u.username, u.email, u.points, u.streak, u.created_at
-    ORDER BY u.points DESC, approved_logs DESC, u.username ASC
-';
-
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$participants = $stmt->fetchAll() ?: [];
+// "Active" uses the database's idea of today, like the counter above.
+$activeSince = dbTodayObject()->modify('-30 days')->format('Y-m-d');
 
 $formatDate = static function (?string $value): string {
     if (!$value) {
@@ -93,6 +77,20 @@ $resolveLastActivity = static function (array $participant): ?string {
     return $approved ?: $checkin;
 };
 
+$pageUrl = static function (int $page) use ($search): string {
+    // Built by hand rather than with array_filter(), which would also drop
+    // a search for "0".
+    $params = [];
+    if ($search !== '') {
+        $params['q'] = $search;
+    }
+    if ($page > 1) {
+        $params['page'] = $page;
+    }
+    $query = http_build_query($params);
+    return 'participant_table.php' . ($query !== '' ? '?' . $query : '');
+};
+
 $pageTitle = 'Participants';
 require_once __DIR__ . '/../layout/header.php';
 ?>
@@ -102,7 +100,7 @@ require_once __DIR__ . '/../layout/header.php';
     <div>
       <h1 class="section-header__title">Participant table</h1>
     </div>
-    <span class="badge badge-blue"><?= count($participants) ?> shown</span>
+    <span class="badge badge-blue"><?= (int)$directory['total'] ?> match<?= (int)$directory['total'] === 1 ? '' : 'es' ?></span>
   </div>
 
   <div class="dashboard-grid admin-dashboard-kpis admin-participant-summary">
@@ -138,12 +136,12 @@ require_once __DIR__ . '/../layout/header.php';
       </div>
       <div class="admin-participant-toolbar__actions">
         <form method="GET" class="admin-participant-search">
-          <label class="sr-only" for="moderator_participant_search">Search participants</label>
-          <input type="text" id="moderator_participant_search" name="q" value="<?= sanitise($search) ?>" placeholder="Search username or email">
+          <label class="sr-only" for="participant_search">Search participants</label>
+          <input type="text" id="participant_search" name="q" value="<?= sanitise($search) ?>" placeholder="Search username or email">
           <button type="submit" class="btn btn-primary">Search</button>
-          <a href="<?= BASE_URL ?>/moderator/participant_table.php" class="btn btn-outline">Reset</a>
+          <a href="participant_table.php" class="btn btn-outline">Reset</a>
         </form>
-        <a href="<?= BASE_URL ?>/moderator/review_submissions.php" class="inline-pill-note">Open review queue</a>
+        <a href="<?= BASE_URL ?>/<?= $area ?>/review_submissions.php" class="inline-pill-note">Open review queue</a>
       </div>
     </div>
 
@@ -169,10 +167,10 @@ require_once __DIR__ . '/../layout/header.php';
             <?php foreach ($participants as $index => $participant): ?>
               <?php
                 $lastActivity = $resolveLastActivity($participant);
-                $isActive = $lastActivity !== null && strtotime($lastActivity) >= strtotime('-30 days');
+                $isActive = $lastActivity !== null && substr($lastActivity, 0, 10) >= $activeSince;
               ?>
               <tr>
-                <td>#<?= $index + 1 ?></td>
+                <td>#<?= $offset + $index + 1 ?></td>
                 <td class="admin-participant-table__user">
                   <strong><?= sanitise($participant['username']) ?></strong>
                   <span class="badge <?= $isActive ? 'badge-green' : 'badge-grey' ?>"><?= $isActive ? 'active' : 'quiet' ?></span>
@@ -189,6 +187,18 @@ require_once __DIR__ . '/../layout/header.php';
           </tbody>
         </table>
       </div>
+
+      <?php if ($totalPages > 1): ?>
+        <nav class="pagination" aria-label="Participant pages">
+          <?php if ($currentPage > 1): ?>
+            <a class="btn btn-sm btn-outline" href="<?= sanitise($pageUrl($currentPage - 1)) ?>">Previous</a>
+          <?php endif; ?>
+          <span class="pagination__status">Page <?= $currentPage ?> of <?= $totalPages ?></span>
+          <?php if ($currentPage < $totalPages): ?>
+            <a class="btn btn-sm btn-outline" href="<?= sanitise($pageUrl($currentPage + 1)) ?>">Next</a>
+          <?php endif; ?>
+        </nav>
+      <?php endif; ?>
     <?php endif; ?>
   </section>
 </div>

@@ -1,7 +1,5 @@
 <?php
-require_once __DIR__ . '/../database/db.php';
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/bootstrap.php';
 
 requireRole('participant');
 
@@ -18,6 +16,7 @@ $spentTotal = $totals['spent'];
 
 $pageTitle = 'Points';
 $needsCharts = true;
+$pageScripts = ['charts.js'];
 require_once __DIR__ . '/../layout/header.php';
 ?>
 
@@ -106,9 +105,6 @@ require_once __DIR__ . '/../layout/header.php';
   </div>
 </div>
 
-<script>
-const CATEGORY_DATA = <?= json_encode($categoryData, JSON_UNESCAPED_SLASHES) ?>;
-</script>
-<script src="<?= BASE_URL ?>/assets/js/charts.js"></script>
+<script type="application/json" id="categoryData"><?= jsonForHtml($categoryData) ?></script>
 
 <?php require_once __DIR__ . '/../layout/footer.php'; ?>

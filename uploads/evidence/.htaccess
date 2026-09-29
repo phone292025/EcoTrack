@@ -1,6 +1,17 @@
-# Block PHP execution in the uploads directory.
-# This prevents uploaded files from being run as scripts.
-<FilesMatch "\.(php|php3|php4|php5|phtml|pl|py|jsp|asp|sh|cgi)$">
+# Evidence photos are served only through evidence.php, which checks who is
+# asking. Nothing in this folder is reachable directly.
+Require all denied
+
+# Apache 2.2 fallback
+<IfModule !mod_authz_core.c>
+    Order allow,deny
     Deny from all
-</FilesMatch>
-Options -Indexes
+</IfModule>
+
+# Belt and braces: even if the rules above were lost, never run PHP here.
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>

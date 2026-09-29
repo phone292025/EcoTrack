@@ -18,3 +18,9 @@
  * Set it to false for any other deployment.
  */
 // define('DEMO_MODE', false);
+
+/**
+ * APP_DEBUG shows error details in the browser instead of a generic error
+ * page. Handy while developing; never leave it on for a real deployment.
+ */
+// define('APP_DEBUG', true);

@@ -48,6 +48,15 @@ if (!defined('DEMO_MODE')) {
     define('DEMO_MODE', $v === false || $v === '' || filter_var($v, FILTER_VALIDATE_BOOLEAN));
 }
 
+/**
+ * Show error details in the browser. Leave this off anywhere real people use
+ * the site: error messages can reveal file paths and SQL.
+ */
+if (!defined('APP_DEBUG')) {
+    $v = getenv('ECOTRACK_APP_DEBUG');
+    define('APP_DEBUG', $v !== false && $v !== '' && filter_var($v, FILTER_VALIDATE_BOOLEAN));
+}
+
 function normalizeConnectionCandidates(array $values): array
 {
     $normalized = [];

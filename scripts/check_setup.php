@@ -9,6 +9,7 @@ if (PHP_SAPI !== 'cli') {
 }
 
 require_once __DIR__ . '/../database/db.php';
+require_once __DIR__ . '/../includes/schema.php';
 
 $projectRoot = realpath(__DIR__ . '/..') ?: dirname(__DIR__);
 $uploadDirs = [
@@ -94,15 +95,23 @@ $allGood = $allGood && $dbOk;
 
 if ($pdo instanceof PDO) {
     try {
-        $tables = (int)$pdo->query(
-            "SELECT COUNT(*)
+        $expected = array_keys(schemaDefinition()['tables']);
+        $present = $pdo->query(
+            "SELECT table_name
              FROM information_schema.tables
              WHERE table_schema = DATABASE()"
-        )->fetchColumn();
-        printResult($tables >= 15, 'Database tables found', $tables . ' of 15 (run: php scripts/migrate.php)');
-        $allGood = $allGood && ($tables >= 15);
+        )->fetchAll(PDO::FETCH_COLUMN);
+        $missing = array_diff($expected, $present);
+        printResult(
+            !$missing,
+            'Database tables',
+            $missing
+                ? 'missing ' . implode(', ', $missing) . ' (run: php scripts/migrate.php)'
+                : count($expected) . ' of ' . count($expected)
+        );
+        $allGood = $allGood && !$missing;
     } catch (Throwable $e) {
-        printResult(false, 'Database tables found', $e->getMessage());
+        printResult(false, 'Database tables', $e->getMessage());
         $allGood = false;
     }
 
@@ -125,12 +134,31 @@ if ($pdo instanceof PDO) {
         printResult(false, 'Default accounts', $e->getMessage());
         $allGood = false;
     }
+
+    // An account row is no use if its password hash cannot be verified.
+    try {
+        $broken = [];
+        foreach ($pdo->query('SELECT username, password FROM users') as $row) {
+            if ((password_get_info((string)$row['password'])['algo'] ?? null) === null) {
+                $broken[] = $row['username'];
+            }
+        }
+        printResult(
+            !$broken,
+            'Password hashes',
+            $broken ? 'unusable for ' . implode(', ', $broken) . ' (run: php scripts/apply_admin_mod_passwords.php)' : 'all valid'
+        );
+        $allGood = $allGood && !$broken;
+    } catch (Throwable $e) {
+        printResult(false, 'Password hashes', $e->getMessage());
+        $allGood = false;
+    }
 }
 
 echo PHP_EOL;
 if ($allGood) {
     echo "EcoTrack is ready. Start the server with:" . PHP_EOL;
-    echo "php -S localhost:8000" . PHP_EOL;
+    echo "php -S localhost:8000 router.php" . PHP_EOL;
     exit(0);
 }
 
