@@ -29,6 +29,29 @@ final class BadgeTest extends TestCase
         $this->assertTrue($this->hasBadge($uid, 'Green Starter'));
     }
 
+    /**
+     * Regression: badges were checked inside awardPoints(), before the streak
+     * was recalculated, so a streak badge that is not also a bonus milestone
+     * waited for some later points change.
+     */
+    public function testStreakBadgeIsAwardedOnTheDayTheStreakReachesIt(): void
+    {
+        getPDO()->exec("INSERT INTO badges (name, criteria) VALUES ('Five in a Row', 'streak>=5')");
+
+        $uid = Fixtures::user('fiver');
+        for ($day = 4; $day >= 1; $day--) {
+            Fixtures::checkin($uid, $day);
+        }
+        // This run's 3-day bonus is already paid, so today pays no bonus and
+        // nothing else calls awardPoints() after the streak reaches 5.
+        awardPoints($uid, STREAK_BONUSES[3], 'streak_bonus', '3-Day Streak Bonus');
+        recalculateStreak($uid);
+
+        $this->assertTrue(dailyCheckIn($uid));
+        $this->assertSame(5, (int)getUserById($uid)['streak']);
+        $this->assertTrue($this->hasBadge($uid, 'Five in a Row'));
+    }
+
     public function testNewRuleIsBackfilledForPeopleWhoAlreadyQualify(): void
     {
         $rich = Fixtures::user('rich', 'participant', 300);

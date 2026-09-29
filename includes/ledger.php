@@ -46,6 +46,10 @@ function inTransaction(callable $work): mixed
  * Lock a user's row until the surrounding transaction ends. Every write that
  * decides whether a bonus is due takes this lock first, so two requests for
  * the same user cannot both decide it is still unpaid.
+ *
+ * Lock order: a transaction takes the user's row before any other row of
+ * theirs (goal, challenge entry, redemption, reward). Two transactions that
+ * lock the same rows in opposite orders can deadlock.
  */
 function lockUser(int $userId): ?array
 {
@@ -195,6 +199,12 @@ function applyStreakBonuses(int $userId): void
         }
 
         ['streak' => $streak, 'last_active' => $lastActive] = recalculateStreak($userId);
+
+        // awardPoints() checked badges against the streak as it was before
+        // this recalculation, so check again now that it is current. Without
+        // this a "streak>=5" badge waited for some later points change.
+        checkAndAwardBadges($userId);
+
         if ($streak === 0 || $lastActive === null) {
             return;
         }
@@ -416,7 +426,9 @@ function applyGoalCompletion(int $userId): void
     }
 
     inTransaction(function (PDO $pdo) use ($userId, $goal): void {
-        // Re-check under a lock so two concurrent requests cannot both pay out.
+        // User first, like saveGoal(), then re-check the goal under its own
+        // lock so two concurrent requests cannot both pay out.
+        lockUser($userId);
         $stmt = $pdo->prepare('SELECT bonus_awarded FROM goals WHERE goal_id = ? FOR UPDATE');
         $stmt->execute([(int)$goal['goal_id']]);
 

@@ -131,7 +131,16 @@ function reviewSubmission(int $reviewerId, bool $isAdmin, int $logId, string $ac
         return ['ok' => false, 'message' => 'Add a short reason when rejecting, so the participant knows what to fix.'];
     }
 
-    $result = inTransaction(function (PDO $pdo) use ($reviewerId, $isAdmin, $logId, $action, $note): array {
+    // Find the owner without a lock, so the locks below can follow the
+    // user-first order described at lockUser().
+    $owner = getPDO()->prepare('SELECT user_id FROM activity_logs WHERE log_id = ?');
+    $owner->execute([$logId]);
+    $ownerId = (int)$owner->fetchColumn();
+
+    $result = inTransaction(function (PDO $pdo) use ($reviewerId, $isAdmin, $logId, $action, $note, $ownerId): array {
+        if ($ownerId > 0) {
+            lockUser($ownerId);
+        }
         $stmt = $pdo->prepare('SELECT * FROM activity_logs WHERE log_id = ? FOR UPDATE');
         $stmt->execute([$logId]);
         $log = $stmt->fetch();

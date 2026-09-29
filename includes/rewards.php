@@ -19,7 +19,7 @@ function redeemReward(int $userId, int $rewardId): array
     }
 
     return inTransaction(function (PDO $pdo) use ($userId, $rewardId): array {
-        // User first, then reward: every path that locks both uses this order.
+        // User first, then reward (see lockUser()).
         $user = lockUser($userId);
 
         $stmt = $pdo->prepare('SELECT * FROM rewards WHERE reward_id = ? AND active = 1 FOR UPDATE');

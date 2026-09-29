@@ -217,6 +217,8 @@ function refreshUserChallengeProgress(int $userId): void
         }
 
         inTransaction(function (PDO $pdo) use ($userId, $row): void {
+            // User first (see lockUser()), then the challenge entry.
+            lockUser($userId);
             $lock = $pdo->prepare('SELECT completed FROM challenge_participants WHERE id = ? FOR UPDATE');
             $lock->execute([(int)$row['id']]);
 
