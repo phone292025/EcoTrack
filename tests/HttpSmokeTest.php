@@ -111,6 +111,33 @@ final class HttpSmokeTest extends HttpTestCase
         $this->assertContains('href="participant_table.php?q=0&amp;page=2"', $body);
     }
 
+    /**
+     * Regression: accounts created before the username rules existed could
+     * not be edited at all, because every save re-checked the unchanged name.
+     */
+    public function testAdminCanEditAnAccountWithALegacyUsername(): void
+    {
+        getPDO()->prepare('INSERT INTO users (username, email, password) VALUES (?, ?, ?)')
+            ->execute(['john.doe', 'john@example.test', password_hash('Password1', PASSWORD_DEFAULT)]);
+        $userId = Fixtures::userId('john.doe');
+        $admin = $this->admin();
+
+        $admin->submit('/admin/user_management.php', [
+            'action' => 'update', 'user_id' => $userId, 'username' => 'john.doe',
+            'email' => 'john@example.test', 'role' => 'moderator', 'new_password' => 'NewPass123',
+        ]);
+        $this->assertContains('User updated', $this->flashes($admin, '/admin/user_management.php'));
+        $this->assertSame('moderator', getUserById($userId)['role']);
+
+        // A new name still has to follow the rules.
+        $admin->submit('/admin/user_management.php', [
+            'action' => 'update', 'user_id' => $userId, 'username' => 'jane doe',
+            'email' => 'john@example.test', 'role' => 'moderator', 'new_password' => '',
+        ]);
+        $this->assertContains('letters, numbers', $this->flashes($admin, '/admin/user_management.php'));
+        $this->assertSame('john.doe', getUserById($userId)['username']);
+    }
+
     public function testPostWithoutCsrfTokenIsRejected(): void
     {
         $client = $this->participant();

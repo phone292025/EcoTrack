@@ -67,15 +67,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $role = (string)($_POST['role'] ?? 'participant');
         $newPassword = (string)($_POST['new_password'] ?? '');
 
-        $existing = $pdo->prepare('SELECT role FROM users WHERE user_id = ?');
+        $existing = $pdo->prepare('SELECT role, username FROM users WHERE user_id = ?');
         $existing->execute([$userId]);
-        $existingRole = (string)($existing->fetchColumn() ?: '');
+        $existingRow = $existing->fetch() ?: ['role' => '', 'username' => ''];
+        $existingRole = (string)$existingRow['role'];
 
         $passwordProblem = $newPassword !== '' ? passwordProblem($newPassword) : null;
 
+        // Accounts created before the username rules existed may have names
+        // like "john.doe". The rules apply to a new name, not an unchanged
+        // one, so those accounts can still be edited and have passwords reset.
+        $usernameProblem = $username !== $existingRow['username'] ? usernameProblem($username) : null;
+
         if ($userId <= 0 || $existingRole === '') {
             setFlash('error', 'Invalid user selected.');
-        } elseif (($problem = usernameProblem($username) ?? emailProblem($email)) !== null) {
+        } elseif (($problem = $usernameProblem ?? emailProblem($email)) !== null) {
             setFlash('error', $problem);
         } elseif (!in_array($role, ['participant', 'moderator', 'admin'], true)) {
             setFlash('error', 'Please choose a valid role.');
