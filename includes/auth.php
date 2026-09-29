@@ -183,25 +183,6 @@ function currentPoints(): int
 }
 
 /**
- * Update the cached balance, from the database when no value is given.
- */
-function refreshSessionPoints(?int $points = null): void
-{
-    if ($points !== null) {
-        $_SESSION['points'] = $points;
-        return;
-    }
-
-    if (!isset($_SESSION['user_id'])) {
-        return;
-    }
-
-    $stmt = getPDO()->prepare('SELECT points FROM users WHERE user_id = ?');
-    $stmt->execute([(int)$_SESSION['user_id']]);
-    $_SESSION['points'] = (int)($stmt->fetchColumn() ?: 0);
-}
-
-/**
  * Stop unless the signed-in user has one of the given roles.
  * Guests go to the login page; the wrong role gets a 403.
  */
