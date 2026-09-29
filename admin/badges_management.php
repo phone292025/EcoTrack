@@ -98,10 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 grantBadge($userId, $badgeId) ? '"' . $badgeName . '" awarded.' : 'That participant already has "' . $badgeName . '".'
             );
         } else {
-            setFlash(
-                'success',
-                revokeBadge($userId, $badgeId) ? '"' . $badgeName . '" taken back.' : 'That participant does not have "' . $badgeName . '".'
-            );
+            flashResult(takeBackBadge($userId, $badgeId));
         }
     }
 
@@ -235,7 +232,7 @@ require_once __DIR__ . '/../layout/header.php';
   <?php if (!empty($badges)): ?>
     <section class="card mb-4">
       <h2 class="card-title">Award or take back a badge</h2>
-      <p class="card-copy">For badges with no criteria, or to correct a mistake. Automatic badges are also awarded on their own as participants earn them.</p>
+      <p class="card-copy">For badges with no criteria, or to correct a mistake. An automatic badge cannot be taken back while the participant still meets its rule, because it would be awarded again on their next points change.</p>
       <form method="POST" class="badge-award-form mt-3">
         <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">
         <div class="form-group mb-0">

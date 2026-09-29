@@ -79,6 +79,29 @@ final class BadgeTest extends TestCase
         $this->assertFalse($this->hasBadge($uid, 'Volunteer'));
     }
 
+    /**
+     * Regression: taking back an automatic badge from someone who still
+     * qualified looked successful, then the next points change re-awarded it.
+     */
+    public function testAutomaticBadgeIsNotTakenBackWhileStillEarned(): void
+    {
+        $uid = Fixtures::user('earned_it', 'participant', 80);
+        $greenStarter = (int)getPDO()->query("SELECT badge_id FROM badges WHERE criteria = 'points>=50'")->fetchColumn();
+        $this->assertTrue($this->hasBadge($uid, 'Green Starter'));
+
+        $result = takeBackBadge($uid, $greenStarter);
+        $this->assertFalse($result['ok']);
+        $this->assertContains('still qualifies', $result['message']);
+        $this->assertTrue($this->hasBadge($uid, 'Green Starter'));
+
+        // Given by mistake to someone below the threshold: taking it back sticks.
+        $below = Fixtures::user('mistake', 'participant', 10);
+        grantBadge($below, $greenStarter);
+        $this->assertTrue(takeBackBadge($below, $greenStarter)['ok']);
+        awardPoints($below, 5, 'checkin', 'Daily Check-in');
+        $this->assertFalse($this->hasBadge($below, 'Green Starter'));
+    }
+
     public function testCriteriaDescriptions(): void
     {
         $this->assertSame('Reach 100 points', describeBadgeCriteria('points>=100'));

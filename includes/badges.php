@@ -41,6 +41,24 @@ function badgeCriteriaMet(string $criteria, array $stats): bool
 }
 
 /**
+ * The figures threshold badges are judged on, or null for an unknown user.
+ *
+ * @return array{points: int|string, streak: int|string, log_count: int|string}|null
+ */
+function getBadgeStats(int $userId): ?array
+{
+    $stmt = getPDO()->prepare(
+        'SELECT u.points, u.streak,
+                (SELECT COUNT(*) FROM activity_logs
+                 WHERE user_id = ? AND status = "approved") AS log_count
+         FROM users u WHERE u.user_id = ?'
+    );
+    $stmt->execute([$userId, $userId]);
+
+    return $stmt->fetch() ?: null;
+}
+
+/**
  * Evaluate every threshold badge the user has not earned yet and award the
  * ones they now qualify for.
  */
@@ -48,15 +66,8 @@ function checkAndAwardBadges(int $userId): void
 {
     $pdo = getPDO();
 
-    $stmt = $pdo->prepare(
-        'SELECT u.points, u.streak,
-                (SELECT COUNT(*) FROM activity_logs
-                 WHERE user_id = ? AND status = "approved") AS log_count
-         FROM users u WHERE u.user_id = ?'
-    );
-    $stmt->execute([$userId, $userId]);
-    $stats = $stmt->fetch();
-    if (!$stats) {
+    $stats = getBadgeStats($userId);
+    if ($stats === null) {
         return;
     }
 
@@ -97,6 +108,38 @@ function revokeBadge(int $userId, int $badgeId): bool
     $stmt->execute([$userId, $badgeId]);
 
     return $stmt->rowCount() > 0;
+}
+
+/**
+ * An admin taking a badge back. Refused while the participant still meets an
+ * automatic rule, because the engine would hand it straight back on their
+ * next points change and the admin would believe it had stuck.
+ *
+ * @return array{ok: bool, message: string}
+ */
+function takeBackBadge(int $userId, int $badgeId): array
+{
+    $stmt = getPDO()->prepare('SELECT name, criteria FROM badges WHERE badge_id = ?');
+    $stmt->execute([$badgeId]);
+    $badge = $stmt->fetch();
+
+    if (!$badge) {
+        return ['ok' => false, 'message' => 'Choose a badge.'];
+    }
+
+    $criteria = trim((string)$badge['criteria']);
+    $stats = getBadgeStats($userId);
+    if ($stats !== null && badgeCriteriaMet($criteria, $stats)) {
+        return ['ok' => false, 'message' => sprintf(
+            '"%s" is awarded automatically (%s) and this participant still qualifies, so it would come straight back. Change the rule instead.',
+            $badge['name'],
+            lcfirst(describeBadgeCriteria($criteria))
+        )];
+    }
+
+    return revokeBadge($userId, $badgeId)
+        ? ['ok' => true, 'message' => '"' . $badge['name'] . '" taken back.']
+        : ['ok' => false, 'message' => 'That participant does not have "' . $badge['name'] . '".'];
 }
 
 /**
