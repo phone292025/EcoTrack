@@ -247,11 +247,13 @@ function getRecentEcoTips(int $limit = 3): array
 /**
  * One page of the participant table shown to moderators and admins.
  *
- * Each figure comes from its own grouped subquery. Joining logs, badges and
- * check-ins directly and counting DISTINCT multiplies the rows per user
- * (logs x badges x check-ins) and slows down sharply as people stay active.
+ * The page's user ids are picked first, then their figures are counted for
+ * those rows only, each through an index on user_id. Grouping or joining the
+ * whole activity, badge and check-in tables would cost more every day the
+ * platform is used, for a page that only ever shows a handful of rows.
  *
- * @return array{rows: array, total: int}
+ * @param int $page Requested page; out-of-range values are clamped
+ * @return array{rows: array, total: int, page: int, pages: int}
  */
 function getParticipantDirectory(string $search, int $page, int $perPage): array
 {
@@ -268,38 +270,40 @@ function getParticipantDirectory(string $search, int $page, int $perPage): array
     $count = $pdo->prepare('SELECT COUNT(*) FROM users u WHERE ' . $where);
     $count->execute($params);
     $total = (int)$count->fetchColumn();
+    $pages = max(1, (int)ceil($total / $perPage));
+    $page = min(max(1, $page), $pages);
+
+    $idStmt = $pdo->prepare(
+        'SELECT u.user_id FROM users u WHERE ' . $where . '
+         ORDER BY u.points DESC, u.username ASC
+         LIMIT ? OFFSET ?'
+    );
+    $position = 1;
+    foreach ($params as $param) {
+        $idStmt->bindValue($position++, $param);
+    }
+    $idStmt->bindValue($position++, $perPage, PDO::PARAM_INT);
+    $idStmt->bindValue($position, ($page - 1) * $perPage, PDO::PARAM_INT);
+    $idStmt->execute();
+    $ids = array_map('intval', $idStmt->fetchAll(PDO::FETCH_COLUMN));
+
+    if (!$ids) {
+        return ['rows' => [], 'total' => $total, 'page' => $page, 'pages' => $pages];
+    }
 
     $stmt = $pdo->prepare(
         'SELECT u.user_id, u.username, u.email, u.points, u.streak, u.created_at,
-                COALESCE(logs.approved_logs, 0) AS approved_logs,
-                logs.last_approved_at,
-                COALESCE(badges.badge_count, 0) AS badge_count,
-                checkins.last_checkin
+                (SELECT COUNT(*) FROM activity_logs al
+                 WHERE al.user_id = u.user_id AND al.status = "approved") AS approved_logs,
+                (SELECT MAX(al.created_at) FROM activity_logs al
+                 WHERE al.user_id = u.user_id AND al.status = "approved") AS last_approved_at,
+                (SELECT COUNT(*) FROM user_badges ub WHERE ub.user_id = u.user_id) AS badge_count,
+                (SELECT MAX(dc.checkin_date) FROM daily_checkins dc WHERE dc.user_id = u.user_id) AS last_checkin
          FROM users u
-         LEFT JOIN (
-             SELECT user_id, COUNT(*) AS approved_logs, MAX(created_at) AS last_approved_at
-             FROM activity_logs
-             WHERE status = "approved"
-             GROUP BY user_id
-         ) logs ON logs.user_id = u.user_id
-         LEFT JOIN (
-             SELECT user_id, COUNT(*) AS badge_count FROM user_badges GROUP BY user_id
-         ) badges ON badges.user_id = u.user_id
-         LEFT JOIN (
-             SELECT user_id, MAX(checkin_date) AS last_checkin FROM daily_checkins GROUP BY user_id
-         ) checkins ON checkins.user_id = u.user_id
-         WHERE ' . $where . '
-         ORDER BY u.points DESC, approved_logs DESC, u.username ASC
-         LIMIT ? OFFSET ?'
+         WHERE u.user_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')
+         ORDER BY u.points DESC, u.username ASC'
     );
+    $stmt->execute($ids);
 
-    $position = 1;
-    foreach ($params as $param) {
-        $stmt->bindValue($position++, $param);
-    }
-    $stmt->bindValue($position++, $perPage, PDO::PARAM_INT);
-    $stmt->bindValue($position, max(0, ($page - 1) * $perPage), PDO::PARAM_INT);
-    $stmt->execute();
-
-    return ['rows' => $stmt->fetchAll(), 'total' => $total];
+    return ['rows' => $stmt->fetchAll(), 'total' => $total, 'page' => $page, 'pages' => $pages];
 }

@@ -94,6 +94,23 @@ final class HttpSmokeTest extends HttpTestCase
         }
     }
 
+    /**
+     * Regression: the pagination links were built with array_filter(), which
+     * dropped a search for "0", so "Next" showed the unfiltered list.
+     */
+    public function testParticipantTablePagingKeepsTheSearch(): void
+    {
+        $hash = password_hash('Password1', PASSWORD_DEFAULT);
+        $insert = getPDO()->prepare('INSERT INTO users (username, email, password) VALUES (?, ?, ?)');
+        for ($i = 1; $i <= 30; $i++) {
+            $insert->execute(['user0_' . $i, 'user0_' . $i . '@example.test', $hash]);
+        }
+
+        $body = $this->moderator()->get('/moderator/participant_table.php?q=0')->body;
+        $this->assertContains('Page 1 of 2', $body);
+        $this->assertContains('href="participant_table.php?q=0&amp;page=2"', $body);
+    }
+
     public function testPostWithoutCsrfTokenIsRejected(): void
     {
         $client = $this->participant();

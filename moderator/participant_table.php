@@ -45,14 +45,10 @@ $highestStreak = (int)$pdo->query(
     'SELECT COALESCE(MAX(streak), 0) FROM users WHERE role = "participant"'
 )->fetchColumn();
 
-$currentPage = max(1, (int)($_GET['page'] ?? 1));
-$directory = getParticipantDirectory($search, $currentPage, PARTICIPANTS_PER_PAGE);
-$totalPages = max(1, (int)ceil($directory['total'] / PARTICIPANTS_PER_PAGE));
-if ($currentPage > $totalPages) {
-    $currentPage = $totalPages;
-    $directory = getParticipantDirectory($search, $currentPage, PARTICIPANTS_PER_PAGE);
-}
+$directory = getParticipantDirectory($search, (int)($_GET['page'] ?? 1), PARTICIPANTS_PER_PAGE);
 $participants = $directory['rows'];
+$currentPage = $directory['page'];
+$totalPages = $directory['pages'];
 $offset = ($currentPage - 1) * PARTICIPANTS_PER_PAGE;
 
 // "Active" uses the database's idea of today, like the counter above.
@@ -82,7 +78,16 @@ $resolveLastActivity = static function (array $participant): ?string {
 };
 
 $pageUrl = static function (int $page) use ($search): string {
-    $query = http_build_query(array_filter(['q' => $search, 'page' => $page > 1 ? $page : null]));
+    // Built by hand rather than with array_filter(), which would also drop
+    // a search for "0".
+    $params = [];
+    if ($search !== '') {
+        $params['q'] = $search;
+    }
+    if ($page > 1) {
+        $params['page'] = $page;
+    }
+    $query = http_build_query($params);
     return 'participant_table.php' . ($query !== '' ? '?' . $query : '');
 };
 
