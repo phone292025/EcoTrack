@@ -4,17 +4,19 @@
  * File: layout/header.php
  *
  * Variables expected before include:
- *   $pageTitle   (string)  — shown in <title> and page heading area
- *   $needsCharts (bool)    — set true on pages that draw Chart.js charts
+ *   $pageTitle   (string)   — shown in <title> and page heading area
+ *   $needsCharts (bool)     — set true on pages that draw Chart.js charts
+ *   $pageScripts (string[]) — extra scripts under assets/js/ for this page,
+ *                             loaded by layout/footer.php
  */
 require_once __DIR__ . '/../includes/paths.php';
 $pageTitle   = $pageTitle ?? 'EcoTrack';
 $needsCharts = $needsCharts ?? false;
-$role        = $_SESSION['role'] ?? 'guest';
+$role        = currentRole() ?: 'guest';
 
-// Points come from the session, refreshed whenever the balance changes, so
-// the shared layout does not run a query on every page in the project.
-$navPoints = function_exists('currentPoints') ? currentPoints() : 0;
+// The session balance is refreshed from the database at the start of every
+// request, so the shared layout does not need a query of its own.
+$navPoints = currentPoints();
 
 $currentScript = basename($_SERVER['SCRIPT_NAME'] ?? '');
 
@@ -102,13 +104,18 @@ function navLink(string $href, string $label, string $currentScript): string
         <?= navLink(BASE_URL . '/register.php', 'Register', $currentScript) ?>
       <?php endif; ?>
 
-      <?php if (isset($_SESSION['user_id'])): ?>
-        <a href="<?= BASE_URL ?>/logout.php" class="nav-logout">Logout</a>
+      <?php if (isLoggedIn()): ?>
+        <!-- A form, not a link: logging out changes state, so it is a POST
+             with a CSRF token and no other site can trigger it. -->
+        <form method="POST" action="<?= BASE_URL ?>/logout.php" class="nav-logout-form">
+          <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">
+          <button type="submit" class="nav-logout">Logout</button>
+        </form>
       <?php endif; ?>
     </nav>
 
     <!-- Points badge (participants only — moderators and admins do not earn) -->
-    <?php if (isset($_SESSION['user_id']) && $role === 'participant'): ?>
+    <?php if (isLoggedIn() && $role === 'participant'): ?>
       <div class="nav-points" aria-label="Your points balance">
         <img src="<?= BASE_URL ?>/assets/img/icon_leaf.svg" alt="" width="16" height="16">
         <span id="navPointsBadge"><?= (int)$navPoints ?> pts</span>

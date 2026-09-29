@@ -2,14 +2,14 @@
  * EcoTrack — Chart Helpers
  * File: assets/js/charts.js
  *
- * Usage: Include this script on pages that need charts.
- * Chart data is passed from PHP via inline <script> blocks:
+ * Usage: list 'charts.js' in $pageScripts on pages that need charts. PHP
+ * hands the data over in JSON blocks, which are data, not code, so they
+ * work under the Content Security Policy:
  *
- *   <script>
- *     const CATEGORY_DATA = <?= json_encode(getCategoryBreakdown($userId)) ?>;
- *     const CO2_DATA      = <?= json_encode(getCO2Savings($userId)) ?>;
- *   </script>
- *   <script src="{BASE_URL}/assets/js/charts.js"></script>  (BASE_URL = '' or /ecotrack, etc.)
+ *   <script type="application/json" id="categoryData"><?= jsonForHtml(getCategoryBreakdown($uid)) ?></script>
+ *   <script type="application/json" id="co2Data"><?= jsonForHtml(getCO2Savings($uid)) ?></script>
+ *
+ * The goal progress bar reads its percentage from data-percent.
  */
 
 'use strict';
@@ -197,15 +197,20 @@ function reportMissingChartLibrary() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  const wantsChart = typeof CATEGORY_DATA !== 'undefined' || typeof CO2_DATA !== 'undefined';
+  const categoryData = readPageData('categoryData');
+  const co2Data = readPageData('co2Data');
+  const wantsChart = categoryData !== null || co2Data !== null;
 
   if (wantsChart && typeof Chart === 'undefined') {
     reportMissingChartLibrary();
   } else {
-    if (typeof CATEGORY_DATA !== 'undefined') initCategoryChart(CATEGORY_DATA);
-    if (typeof CO2_DATA      !== 'undefined') initCO2Chart(CO2_DATA);
+    if (categoryData) initCategoryChart(categoryData);
+    if (co2Data) initCO2Chart(co2Data);
   }
 
   // The progress bar is pure CSS and does not need Chart.js.
-  if (typeof GOAL_PERCENT !== 'undefined') initGoalProgressBar(GOAL_PERCENT);
+  const goalBar = document.getElementById('goalProgressBar');
+  if (goalBar && goalBar.dataset.percent !== undefined) {
+    initGoalProgressBar(parseInt(goalBar.dataset.percent, 10) || 0);
+  }
 });

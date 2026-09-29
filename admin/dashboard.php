@@ -1,7 +1,5 @@
 <?php
-require_once __DIR__ . '/../database/db.php';
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/bootstrap.php';
 
 requireRole('admin');
 
@@ -62,16 +60,12 @@ $activeUsers = (int)$pdo->query(
 )->fetchColumn();
 
 $totalPoints = (int)$pdo->query(
-    'SELECT COALESCE(SUM(CASE WHEN delta > 0 THEN delta ELSE 0 END), 0) FROM points_transactions'
+    'SELECT COALESCE(SUM(delta), 0) FROM points_transactions WHERE delta > 0 AND kind <> "refund"'
 )->fetchColumn();
 
 $totalBadgesAwarded = (int)$pdo->query('SELECT COUNT(*) FROM user_badges')->fetchColumn();
 $redemptionCount = (int)$pdo->query('SELECT COUNT(*) FROM redemptions')->fetchColumn();
-$recentRedemptions = (int)$pdo->query(
-    'SELECT COUNT(*)
-     FROM redemptions
-     WHERE redeemed_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)'
-)->fetchColumn();
+$pendingRedemptions = (int)$pdo->query('SELECT COUNT(*) FROM redemptions WHERE status = "pending"')->fetchColumn();
 
 $lowStockRewards = (int)$pdo->query(
     'SELECT COUNT(*)
@@ -113,8 +107,6 @@ $challengePerformance = $pdo->query(
      LIMIT 5'
 )->fetchAll() ?: [];
 
-$recentAnnouncements = getRecentAnnouncements(2);
-
 $categoryRows = $pdo->query(
     'SELECT c.name,
             COALESCE(SUM(CASE WHEN al.status = "approved" THEN al.points ELSE 0 END), 0) AS total_points,
@@ -129,7 +121,7 @@ $categoryChart = [
     'labels' => [],
     'points' => [],
     'co2' => [],
-    'colors' => ['#2d936c', '#f4a261', '#457b9d', '#7b5ea7'],
+    'colors' => chartColors(count($categoryRows)),
 ];
 
 $topCategory = null;
@@ -178,6 +170,7 @@ for ($i = 29; $i >= 0; $i--) {
 
 $pageTitle = 'Admin';
 $needsCharts = true;   // this page draws the carbon trend and platform mix charts
+$pageScripts = ['admin-dashboard.js'];
 require_once __DIR__ . '/../layout/header.php';
 ?>
 
@@ -239,6 +232,12 @@ require_once __DIR__ . '/../layout/header.php';
       <div class="admin-ops-metric">
         <span class="admin-ops-metric__label">Reward redemptions</span>
         <strong class="admin-ops-metric__value"><?= $redemptionCount ?></strong>
+      </div>
+      <div class="admin-ops-metric">
+        <span class="admin-ops-metric__label">Waiting to hand over</span>
+        <strong class="admin-ops-metric__value">
+          <a href="<?= BASE_URL ?>/admin/rewards_management.php#redemptions"><?= $pendingRedemptions ?></a>
+        </strong>
       </div>
       <div class="admin-ops-metric">
         <span class="admin-ops-metric__label">Challenge completion</span>
@@ -305,154 +304,45 @@ require_once __DIR__ . '/../layout/header.php';
     </section>
   </div>
 
+  <section class="card mt-4">
+    <div class="admin-card-header">
+      <div>
+        <h2 class="card-title">Most joined challenges</h2>
+      </div>
+      <a href="<?= BASE_URL ?>/admin/challenge_management.php" class="btn btn-outline btn-sm">Manage challenges</a>
+    </div>
+    <?php if (empty($challengePerformance)): ?>
+      <p class="card-copy">No challenges yet.</p>
+    <?php else: ?>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Challenge</th>
+              <th>Status</th>
+              <th>Joined</th>
+              <th>Completed</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($challengePerformance as $challenge): ?>
+              <tr>
+                <td><?= sanitise($challenge['title']) ?></td>
+                <td><?= sanitise($challenge['status']) ?></td>
+                <td><?= (int)$challenge['joined_count'] ?></td>
+                <td><?= (int)$challenge['completed_count'] ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    <?php endif; ?>
+  </section>
+
 </div>
 
-<script>
-const ADMIN_CO2_DATA = <?= json_encode($adminCo2Chart, JSON_UNESCAPED_SLASHES) ?>;
-const ADMIN_CATEGORY_DATA = <?= json_encode($categoryChart, JSON_UNESCAPED_SLASHES) ?>;
+<script type="application/json" id="adminCo2Data"><?= jsonForHtml($adminCo2Chart) ?></script>
+<script type="application/json" id="adminCategoryData"><?= jsonForHtml($categoryChart) ?></script>
 
-document.addEventListener('DOMContentLoaded', () => {
-  const mobileQuery = window.matchMedia('(max-width: 768px)');
-  const opsCard = document.querySelector('.admin-ops-card');
-  const opsToggle = document.getElementById('adminOpsToggle');
-
-  const syncOpsState = () => {
-    if (!opsCard || !opsToggle) return;
-
-    const collapsed = mobileQuery.matches;
-    opsCard.classList.toggle('is-collapsed', collapsed);
-    opsToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    opsToggle.textContent = collapsed ? 'Show details' : 'Hide details';
-  };
-
-  if (opsCard && opsToggle) {
-    syncOpsState();
-
-    opsToggle.addEventListener('click', () => {
-      if (!mobileQuery.matches) return;
-
-      const collapsed = opsCard.classList.toggle('is-collapsed');
-      opsToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-      opsToggle.textContent = collapsed ? 'Show details' : 'Hide details';
-    });
-
-    mobileQuery.addEventListener('change', syncOpsState);
-  }
-
-  if (typeof Chart === 'undefined') return;
-
-  const renderEmptyState = (canvasId, message) => {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas || !canvas.parentElement) return;
-    const empty = document.createElement('p');
-    empty.className = 'chart-empty';
-    empty.textContent = message;
-    canvas.parentElement.replaceChild(empty, canvas);
-  };
-
-  const co2Canvas = document.getElementById('adminCo2Chart');
-  if (co2Canvas) {
-    const hasCo2Data = ADMIN_CO2_DATA.data.some((value) => value > 0);
-    if (!hasCo2Data) {
-      renderEmptyState('adminCo2Chart', 'The platform carbon trend will appear after the first approved activity logs are recorded.');
-    } else {
-      new Chart(co2Canvas, {
-        type: 'line',
-        data: {
-          labels: ADMIN_CO2_DATA.labels,
-          datasets: [{
-            label: 'Cumulative CO2 saved (kg)',
-            data: ADMIN_CO2_DATA.data,
-            borderColor: '#2d936c',
-            backgroundColor: 'rgba(45,147,108,0.12)',
-            fill: true,
-            tension: 0.32,
-            borderWidth: 2.5,
-            pointRadius: 3,
-            pointHoverRadius: 4,
-          }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: (ctx) => ` ${ctx.parsed.y.toFixed(3)} kg saved`,
-              },
-            },
-          },
-          scales: {
-            x: {
-              grid: { display: false },
-              ticks: { maxTicksLimit: 8 },
-            },
-            y: {
-              beginAtZero: true,
-              ticks: {
-                callback: (value) => `${Number(value).toFixed(2)} kg`,
-              },
-              grid: { color: 'rgba(0,0,0,0.06)' },
-            },
-          },
-        },
-      });
-    }
-  }
-
-  const categoryCanvas = document.getElementById('adminCategoryChart');
-  if (categoryCanvas) {
-    const totalCategoryPoints = ADMIN_CATEGORY_DATA.points.reduce((sum, value) => sum + value, 0);
-    if (totalCategoryPoints === 0) {
-      renderEmptyState('adminCategoryChart', 'Category impact will show up once approved activities are added across the platform.');
-    } else {
-      new Chart(categoryCanvas, {
-        type: 'bar',
-        data: {
-          labels: ADMIN_CATEGORY_DATA.labels,
-          datasets: [{
-            label: 'Approved points',
-            data: ADMIN_CATEGORY_DATA.points,
-            backgroundColor: ADMIN_CATEGORY_DATA.colors,
-            borderRadius: 10,
-            borderSkipped: false,
-          }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: false,
-          indexAxis: 'y',
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: (ctx) => {
-                  const co2 = ADMIN_CATEGORY_DATA.co2[ctx.dataIndex] ?? 0;
-                  return ` ${ctx.label}: ${ctx.parsed.x} pts / ${Number(co2).toFixed(3)} kg CO2`;
-                },
-              },
-            },
-          },
-          scales: {
-            x: {
-              beginAtZero: true,
-              grid: { color: 'rgba(0,0,0,0.06)' },
-            },
-            y: {
-              grid: { display: false },
-              ticks: {
-                font: { size: 12 },
-              },
-            },
-          },
-        },
-      });
-    }
-  }
-});
-</script>
 
 <?php require_once __DIR__ . '/../layout/footer.php'; ?>

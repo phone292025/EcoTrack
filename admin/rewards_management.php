@@ -1,12 +1,10 @@
 <?php
-require_once __DIR__ . '/../database/db.php';
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/bootstrap.php';
 
 requireRole('admin');
 
 $pdo = getPDO();
-$rewardCategories = ['Lifestyle', 'Campus', 'Eco Essentials'];
+$rewardCategories = REWARD_CATEGORIES;
 $rewardForm = [
     'name' => '',
     'description' => '',
@@ -19,87 +17,50 @@ $rewardForm = [
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
     $action = $_POST['action'] ?? 'update';
+    $rewardId = (int)($_POST['reward_id'] ?? 0);
+    $redemptionId = (int)($_POST['redemption_id'] ?? 0);
 
     if ($action === 'create') {
-        $rewardForm = [
-            'name' => trim($_POST['name'] ?? ''),
-            'description' => trim($_POST['description'] ?? ''),
-            'category' => $_POST['category'] ?? 'Lifestyle',
-            'point_cost' => (string)((int)($_POST['point_cost'] ?? 50)),
-            'stock' => (string)((int)($_POST['stock'] ?? 0)),
-            'active' => isset($_POST['active']) ? '1' : '0',
-        ];
+        $check = validateRewardInput($_POST);
 
-        $name = $rewardForm['name'];
-        $description = $rewardForm['description'];
-        $category = $rewardForm['category'];
-        $pointCost = (int)$rewardForm['point_cost'];
-        $stock = (int)$rewardForm['stock'];
-        $active = $rewardForm['active'] === '1' ? 1 : 0;
-
-        if (strlen($name) < 3) {
-            setFlash('error', 'Reward name must be at least 3 characters.');
-        } elseif (!in_array($category, $rewardCategories, true)) {
-            setFlash('error', 'Please choose a valid reward category.');
-        } elseif ($pointCost < 1) {
-            setFlash('error', 'Point cost must be at least 1.');
-        } elseif ($stock < 0) {
-            setFlash('error', 'Stock cannot be negative.');
+        if (!$check['ok']) {
+            setFlash('error', $check['message']);
+            $posted = array_intersect_key($_POST, $rewardForm);
+            $posted['active'] = isset($_POST['active']) ? '1' : '0';
+            setFormOld($posted);
         } else {
+            $v = $check['values'];
             $pdo->prepare(
                 'INSERT INTO rewards (name, description, image, category, point_cost, stock, active)
                  VALUES (?, ?, NULL, ?, ?, ?, ?)'
-            )->execute([$name, $description, $category, $pointCost, $stock, $active]);
+            )->execute([$v['name'], $v['description'], $v['category'], $v['point_cost'], $v['stock'], $v['active']]);
 
             setFlash('success', 'Reward added to the catalogue.');
-            $rewardForm = [
-                'name' => '',
-                'description' => '',
-                'category' => 'Lifestyle',
-                'point_cost' => '50',
-                'stock' => '0',
-                'active' => '1',
-            ];
         }
     } elseif ($action === 'update') {
-        $rewardId = (int)($_POST['reward_id'] ?? 0);
-        $name = trim($_POST['name'] ?? '');
-        $description = trim($_POST['description'] ?? '');
-        $category = $_POST['category'] ?? 'Lifestyle';
-        $pointCost = (int)($_POST['point_cost'] ?? 50);
-        $stock = (int)($_POST['stock'] ?? 0);
-        $active = isset($_POST['active']) ? 1 : 0;
+        $check = validateRewardInput($_POST);
 
         if ($rewardId <= 0) {
             setFlash('error', 'Invalid reward selected.');
-        } elseif (strlen($name) < 3) {
-            setFlash('error', 'Reward name must be at least 3 characters.');
-        } elseif (!in_array($category, $rewardCategories, true)) {
-            setFlash('error', 'Please choose a valid reward category.');
-        } elseif ($pointCost < 1) {
-            setFlash('error', 'Point cost must be at least 1.');
-        } elseif ($stock < 0) {
-            setFlash('error', 'Stock cannot be negative.');
+        } elseif (!$check['ok']) {
+            setFlash('error', $check['message']);
         } else {
+            $v = $check['values'];
             $pdo->prepare(
                 'UPDATE rewards
-                 SET name = ?, description = ?, image = NULL, category = ?, point_cost = ?, stock = ?, active = ?
+                 SET name = ?, description = ?, category = ?, point_cost = ?, stock = ?, active = ?
                  WHERE reward_id = ?'
-            )->execute([$name, $description, $category, $pointCost, $stock, $active, $rewardId]);
+            )->execute([$v['name'], $v['description'], $v['category'], $v['point_cost'], $v['stock'], $v['active'], $rewardId]);
 
             setFlash('success', 'Reward updated successfully.');
         }
     } elseif ($action === 'delete') {
-        $rewardId = (int)($_POST['reward_id'] ?? 0);
-        if ($rewardId > 0) {
-            $pdo->prepare('DELETE FROM rewards WHERE reward_id = ?')->execute([$rewardId]);
-            setFlash('success', 'Reward removed from the catalogue.');
-        } else {
-            setFlash('error', 'Invalid reward selected.');
-        }
+        flashResult($rewardId > 0 ? removeReward($rewardId) : ['ok' => false, 'message' => 'Invalid reward selected.']);
+    } elseif ($action === 'fulfil_redemption') {
+        flashResult(fulfilRedemption(currentUserId(), $redemptionId));
+    } elseif ($action === 'cancel_redemption') {
+        flashResult(cancelRedemption(currentUserId(), $redemptionId));
     }
-
-    setFormOld($rewardForm);
 
     // Redirect so refreshing cannot repeat the submission.
     redirectToSelf($_SERVER['QUERY_STRING'] ?? '');
@@ -110,6 +71,7 @@ $old = takeFormOld();
 if ($old) {
     $rewardForm = array_merge($rewardForm, $old);
 }
+$pendingRedemptions = getPendingRedemptions();
 
 $list = $pdo->query('SELECT * FROM rewards ORDER BY active DESC, point_cost ASC, reward_id ASC')->fetchAll() ?: [];
 $rewardCount = count($list);
@@ -192,12 +154,64 @@ require_once __DIR__ . '/../layout/header.php';
     </article>
   </section>
 
-  <?php foreach ($flash['error'] as $flashMessage): ?>
-    <div class="flash-message flash-error" role="alert"><?= sanitise($flashMessage) ?></div>
-  <?php endforeach; ?>
-  <?php foreach ($flash['success'] as $flashMessage): ?>
-    <div class="flash-message flash-success" role="status"><?= sanitise($flashMessage) ?></div>
-  <?php endforeach; ?>
+  <?php renderFlash($flash); ?>
+
+  <section class="card mb-4" id="redemptions">
+    <div class="card-header-row">
+      <div class="card-header-row__content">
+        <h2 class="card-title">Redemptions to hand over</h2>
+      </div>
+      <span class="inline-pill-note"><?= count($pendingRedemptions) ?> pending</span>
+    </div>
+
+    <?php if (empty($pendingRedemptions)): ?>
+      <p class="card-copy">Nothing waiting. New redemptions from the Green Shop appear here.</p>
+    <?php else: ?>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Redeemed</th>
+              <th>Participant</th>
+              <th>Reward</th>
+              <th>Points</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($pendingRedemptions as $redemption): ?>
+              <tr>
+                <td><?= sanitise($redemption['redeemed_at']) ?></td>
+                <td>
+                  <strong><?= sanitise($redemption['username']) ?></strong><br>
+                  <span class="meta-copy"><?= sanitise($redemption['email']) ?></span>
+                </td>
+                <td><?= sanitise($redemption['reward_name']) ?></td>
+                <td><?= (int)$redemption['points_spent'] ?></td>
+                <td>
+                  <div class="inline-actions">
+                    <form method="POST">
+                      <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">
+                      <input type="hidden" name="action" value="fulfil_redemption">
+                      <input type="hidden" name="redemption_id" value="<?= (int)$redemption['redemption_id'] ?>">
+                      <button type="submit" class="btn btn-primary btn-sm">Mark handed over</button>
+                    </form>
+                    <form method="POST">
+                      <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">
+                      <input type="hidden" name="action" value="cancel_redemption">
+                      <input type="hidden" name="redemption_id" value="<?= (int)$redemption['redemption_id'] ?>">
+                      <button type="submit" class="btn btn-outline btn-sm"
+                              data-confirm="Cancel this redemption and refund <?= (int)$redemption['points_spent'] ?> points?">Cancel &amp; refund</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    <?php endif; ?>
+  </section>
 
   <section class="card reward-admin-studio">
       <div class="reward-admin-studio-layout">
@@ -217,7 +231,7 @@ require_once __DIR__ . '/../layout/header.php';
         <div class="reward-admin-form-grid">
           <div class="form-group reward-admin-form-group reward-admin-form-group--name">
             <label for="create_name">Reward name</label>
-            <input type="text" id="create_name" name="name" maxlength="150" required value="<?= sanitise($rewardForm['name']) ?>" placeholder="Reusable bottle">
+            <input type="text" id="create_name" name="name" maxlength="<?= REWARD_NAME_MAX ?>" required value="<?= sanitise($rewardForm['name']) ?>" placeholder="Reusable bottle">
           </div>
 
           <div class="form-group reward-admin-form-group">
@@ -231,12 +245,12 @@ require_once __DIR__ . '/../layout/header.php';
 
           <div class="form-group reward-admin-form-group">
             <label for="create_point_cost">Point cost</label>
-            <input type="number" id="create_point_cost" name="point_cost" min="1" value="<?= sanitise($rewardForm['point_cost']) ?>">
+            <input type="number" id="create_point_cost" name="point_cost" min="1" max="<?= REWARD_COST_MAX ?>" value="<?= sanitise($rewardForm['point_cost']) ?>">
           </div>
 
           <div class="form-group reward-admin-form-group">
             <label for="create_stock">Stock</label>
-            <input type="number" id="create_stock" name="stock" min="0" value="<?= sanitise($rewardForm['stock']) ?>">
+            <input type="number" id="create_stock" name="stock" min="0" max="<?= REWARD_STOCK_MAX ?>" value="<?= sanitise($rewardForm['stock']) ?>">
           </div>
 
           <div class="form-group reward-admin-form-group reward-admin-form-group--description">
@@ -319,7 +333,7 @@ require_once __DIR__ . '/../layout/header.php';
                         <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="reward_id" value="<?= (int)$reward['reward_id'] ?>">
-                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this reward?');">Delete</button>
+                        <button type="submit" class="btn btn-danger btn-sm" data-confirm="Delete this reward? If anyone has redeemed it, it will be hidden instead.">Delete</button>
                       </form>
                     </div>
                   </td>
@@ -344,7 +358,7 @@ require_once __DIR__ . '/../layout/header.php';
                           <div class="reward-admin-form-grid reward-admin-form-grid--table">
                             <div class="form-group reward-admin-form-group reward-admin-form-group--name">
                               <label for="edit_name_<?= (int)$reward['reward_id'] ?>">Reward name</label>
-                              <input type="text" id="edit_name_<?= (int)$reward['reward_id'] ?>" name="name" maxlength="150" value="<?= sanitise($reward['name']) ?>" required>
+                              <input type="text" id="edit_name_<?= (int)$reward['reward_id'] ?>" name="name" maxlength="<?= REWARD_NAME_MAX ?>" value="<?= sanitise($reward['name']) ?>" required>
                             </div>
 
                             <div class="form-group reward-admin-form-group">
@@ -358,12 +372,12 @@ require_once __DIR__ . '/../layout/header.php';
 
                             <div class="form-group reward-admin-form-group">
                               <label for="edit_point_cost_<?= (int)$reward['reward_id'] ?>">Point cost</label>
-                              <input type="number" id="edit_point_cost_<?= (int)$reward['reward_id'] ?>" name="point_cost" min="1" value="<?= (int)$reward['point_cost'] ?>">
+                              <input type="number" id="edit_point_cost_<?= (int)$reward['reward_id'] ?>" name="point_cost" min="1" max="<?= REWARD_COST_MAX ?>" value="<?= (int)$reward['point_cost'] ?>">
                             </div>
 
                             <div class="form-group reward-admin-form-group">
                               <label for="edit_stock_<?= (int)$reward['reward_id'] ?>">Stock</label>
-                              <input type="number" id="edit_stock_<?= (int)$reward['reward_id'] ?>" name="stock" min="0" value="<?= (int)$reward['stock'] ?>">
+                              <input type="number" id="edit_stock_<?= (int)$reward['reward_id'] ?>" name="stock" min="0" max="<?= REWARD_STOCK_MAX ?>" value="<?= (int)$reward['stock'] ?>">
                             </div>
 
                             <div class="form-group reward-admin-form-group reward-admin-form-group--description">

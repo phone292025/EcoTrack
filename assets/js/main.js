@@ -8,6 +8,10 @@
  *   3. Toast notifications
  *   4. Flash message handling
  *   5. Moderation guard (reject needs a reason)
+ *   6. Confirmation before destructive actions (data-confirm)
+ *
+ * No page uses inline <script> or onclick="" handlers: the Content Security
+ * Policy blocks them. Behaviour is attached here from data-* attributes.
  */
 
 'use strict';
@@ -356,3 +360,29 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+
+/* ═══════════════════════════════════════════════════════════
+ *  6. CONFIRM DESTRUCTIVE ACTIONS
+ *
+ *  <button data-confirm="Delete this reward?"> asks before submitting.
+ * ═══════════════════════════════════════════════════════════ */
+document.addEventListener('click', (e) => {
+  const button = e.target.closest('[data-confirm]');
+  if (button && !window.confirm(button.dataset.confirm)) {
+    e.preventDefault();
+  }
+});
+
+/**
+ * Read JSON handed over by PHP in a <script type="application/json"> block.
+ * Returns null when the block is missing or unreadable.
+ */
+function readPageData(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  try {
+    return JSON.parse(el.textContent);
+  } catch (err) {
+    return null;
+  }
+}

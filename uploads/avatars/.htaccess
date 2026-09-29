@@ -1,6 +1,24 @@
-# Block PHP execution in the uploads directory.
-# This prevents uploaded files from being run as scripts.
-<FilesMatch "\.(php|php3|php4|php5|phtml|pl|py|jsp|asp|sh|cgi)$">
-    Deny from all
-</FilesMatch>
+# Profile pictures are served as plain images. Anything that could run as a
+# script is refused, and PHP is switched off for this folder.
 Options -Indexes
+
+<FilesMatch "\.(php\d?|phtml|phar|pl|py|jsp|asp|sh|cgi)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+</IfModule>

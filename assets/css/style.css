@@ -159,12 +159,23 @@ ul, ol { list-style: none; }
   color:      var(--clr-primary);
   text-decoration: none;
 }
+/* Logout is a POST form; the button inside looks like the other nav items. */
+.nav-logout-form { display: contents; }
 .nav-menu .nav-logout {
-  background: var(--clr-danger);
-  color:      #fff !important;
+  padding:       0.55rem 0.65rem;
+  border:        0;
   border-radius: var(--radius-sm);
+  background:    var(--clr-danger);
+  color:         #fff;
+  font:          inherit;
+  font-weight:   500;
+  font-size:     clamp(0.78rem, 0.95vw, var(--text-sm));
+  white-space:   nowrap;
+  cursor:        pointer;
+  transition:    background var(--transition);
 }
-.nav-menu .nav-logout:hover { background: #b83035; text-decoration: none; }
+.nav-menu .nav-logout:hover,
+.nav-menu .nav-logout:focus-visible { background: #b83035; }
 
 .nav-points {
   display:     flex;
@@ -3227,12 +3238,14 @@ tr:hover td { background: rgba(45,147,108,0.04); }
     flex-wrap:      nowrap;
   }
   .nav-menu.nav-menu--open { display:flex; }
-  .nav-menu a {
+  .nav-menu a,
+  .nav-menu .nav-logout {
     padding: var(--space-3) var(--space-4);
     border-radius:var(--radius-sm);
     font-size: var(--text-base);
     white-space: normal;
   }
+  .nav-menu .nav-logout { text-align: left; }
 
   .nav-points { display:none; }
 }
@@ -5611,4 +5624,139 @@ button:disabled {
   .activity-list__status {
     font-size: 0.78rem;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════
+ *  LANDING PAGE (moved out of an inline <style> block in index.php,
+ *  which the Content Security Policy no longer allows)
+ * ═══════════════════════════════════════════════════════════ */
+.hero {
+  background: linear-gradient(135deg, #1e6b4e 0%, #2d936c 50%, #3db883 100%);
+  color: #fff;
+  text-align: center;
+  padding: 5rem 1.5rem 4rem;
+  border-radius: var(--radius-lg);
+  margin-bottom: 3rem;
+}
+.hero h1 { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 800; margin-bottom: 1rem; }
+.hero p  { font-size: clamp(1rem, 2.5vw, 1.3rem); opacity: 0.9; max-width: 600px; margin: 0 auto 2rem; }
+.hero-btns { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+.btn-white { background:#fff; color:var(--clr-primary); font-weight:700; padding:0.75em 2.2em; border-radius:var(--radius-full); font-size:1rem; transition:transform 0.2s; }
+.btn-white:hover { transform:translateY(-2px); text-decoration:none; color:var(--clr-primary-dark); }
+.btn-outline-white { background:transparent; color:#fff; border:2px solid #fff; font-weight:700; padding:0.75em 2.2em; border-radius:var(--radius-full); font-size:1rem; }
+.btn-outline-white:hover { background:rgba(255,255,255,0.15); text-decoration:none; color:#fff; }
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 3rem;
+}
+.features-grid--secondary {
+  max-width: 620px;
+  margin: 0 auto 3rem;
+}
+.feature-card {
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-md);
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+.feature-icon {
+  display: block;
+  margin: 0 auto 1rem;
+  color: var(--clr-primary);
+}
+.feature-card h3 { font-size: 1.1rem; margin-bottom: 0.5rem; color: var(--clr-primary); }
+.feature-card p  { font-size: 0.9rem; color: var(--clr-text-muted); }
+
+.section-title { font-size: 1.8rem; font-weight: 700; text-align:center; margin-bottom:2rem; }
+.landing-cta { text-align: center; padding: 3rem 0 1rem; }
+
+@media (min-width: 900px) {
+  .features-grid--primary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .features-grid--secondary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+ *  STATUS PAGES (403, error)
+ * ═══════════════════════════════════════════════════════════ */
+.status-page { text-align: center; padding: 5rem 1rem; }
+.status-page__icon { font-size: 4rem; }
+.status-page__title { margin: 1rem 0; }
+.status-page__title--danger { color: var(--clr-danger); }
+.status-page__text { color: var(--clr-text-muted); margin-bottom: 2rem; }
+.status-page__debug {
+  max-width: 760px;
+  margin: 0 auto 2rem;
+  padding: var(--space-4);
+  background: #fff4f4;
+  border: 1px solid #f1c4c6;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  white-space: pre-wrap;
+  font-size: var(--text-sm);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ *  LAYOUT UTILITIES (these replace one-off inline style="" attributes)
+ * ═══════════════════════════════════════════════════════════ */
+.container--xs { max-width: 560px; }
+.container--sm { max-width: 720px; }
+.container--md { max-width: 960px; }
+.container--lg { max-width: 1140px; }
+
+.mb-0 { margin-bottom: 0; }
+.mb-2 { margin-bottom: var(--space-2); }
+.mb-4 { margin-bottom: var(--space-4); }
+.mt-2 { margin-top: var(--space-2); }
+.mt-3 { margin-top: var(--space-3); }
+.mt-4 { margin-top: var(--space-4); }
+
+.card--tinted { background: #f8fbf9; }
+.entry-list__title { margin: 0 0 var(--space-2); font-size: var(--text-base); }
+.entry-list__body { margin: var(--space-2) 0 0; }
+.challenge-card__title { font-size: 1.4rem; }
+.you-marker { display: inline; color: var(--clr-primary); }
+
+/* Announcement and tip text on the participant dashboard. */
+.info-list__body {
+  margin: var(--space-1) 0 0;
+  color: var(--clr-text);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* Status chips for redemptions (pending / fulfilled / cancelled). */
+.status-chip {
+  display: inline-block;
+  padding: 0.1rem 0.55rem;
+  border-radius: var(--radius-full);
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: #eef2f0;
+  color: var(--clr-text-muted);
+}
+.status-chip--pending   { background: #fff4e0; color: #8a5a00; }
+.status-chip--fulfilled { background: var(--clr-primary-light); color: var(--clr-primary-dark); }
+.status-chip--cancelled { background: #fbe9ea; color: #9c2a2f; }
+
+/* Small inline forms that sit side by side in a table cell. */
+.inline-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.inline-actions form { margin: 0; }
+
+/* Manual badge award form on the admin badge page. */
+.badge-award-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: end;
+}
+@media (max-width: 768px) {
+  .badge-award-form { grid-template-columns: 1fr; }
 }

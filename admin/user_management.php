@@ -1,7 +1,5 @@
 <?php
-require_once __DIR__ . '/../database/db.php';
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/bootstrap.php';
 
 requireRole('admin');
 
@@ -19,32 +17,20 @@ function otherAdminsExist(PDO $pdo, int $excludingUserId): bool
     return (int)$stmt->fetchColumn() > 0;
 }
 
-/** Password rules for admin-created accounts, same as self-registration. */
-function passwordProblem(string $password): ?string
-{
-    if (strlen($password) < 8) {
-        return 'Password must be at least 8 characters.';
-    }
-    if (!preg_match('/[A-Z]/', $password) || !preg_match('/[0-9]/', $password)) {
-        return 'Password must include at least one uppercase letter and one number.';
-    }
-    return null;
-}
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
     $action = $_POST['action'] ?? 'create';
 
     if ($action === 'create') {
-        $username = trim($_POST['username'] ?? '');
-        $email    = trim($_POST['email'] ?? '');
-        $role     = $_POST['role'] ?? 'participant';
-        $password = $_POST['password'] ?? '';
+        // Same rules as self-registration, so an admin cannot create an
+        // account that could not have signed up on its own.
+        $username = trim((string)($_POST['username'] ?? ''));
+        $email    = trim((string)($_POST['email'] ?? ''));
+        $role     = (string)($_POST['role'] ?? 'participant');
+        $password = (string)($_POST['password'] ?? '');
 
-        if (strlen($username) < 3) {
-            setFlash('error', 'Username must be at least 3 characters.');
-        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            setFlash('error', 'Please enter a valid email address.');
+        if (($problem = usernameProblem($username) ?? emailProblem($email)) !== null) {
+            setFlash('error', $problem);
         } elseif (!in_array($role, ['participant', 'moderator', 'admin'], true)) {
             setFlash('error', 'Please choose a valid role.');
         } elseif (($problem = passwordProblem($password)) !== null) {
@@ -76,10 +62,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         setFormOld(['username' => $username, 'email' => $email, 'role' => $role]);
     } elseif ($action === 'update') {
         $userId = (int)($_POST['user_id'] ?? 0);
-        $username = trim($_POST['username'] ?? '');
-        $email = trim($_POST['email'] ?? '');
-        $role = $_POST['role'] ?? 'participant';
-        $newPassword = $_POST['new_password'] ?? '';
+        $username = trim((string)($_POST['username'] ?? ''));
+        $email = trim((string)($_POST['email'] ?? ''));
+        $role = (string)($_POST['role'] ?? 'participant');
+        $newPassword = (string)($_POST['new_password'] ?? '');
 
         $existing = $pdo->prepare('SELECT role FROM users WHERE user_id = ?');
         $existing->execute([$userId]);
@@ -89,10 +75,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($userId <= 0 || $existingRole === '') {
             setFlash('error', 'Invalid user selected.');
-        } elseif (strlen($username) < 3) {
-            setFlash('error', 'Username must be at least 3 characters.');
-        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            setFlash('error', 'Please enter a valid email address.');
+        } elseif (($problem = usernameProblem($username) ?? emailProblem($email)) !== null) {
+            setFlash('error', $problem);
         } elseif (!in_array($role, ['participant', 'moderator', 'admin'], true)) {
             setFlash('error', 'Please choose a valid role.');
         } elseif ($userId === currentUserId() && $role !== 'admin') {
@@ -104,11 +88,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             try {
                 if ($newPassword !== '') {
+                    // A new password logs the account out everywhere, because
+                    // its sessions no longer match the stored hash.
+                    $newHash = password_hash($newPassword, PASSWORD_DEFAULT);
                     $pdo->prepare(
                         'UPDATE users
                          SET username = ?, email = ?, role = ?, password = ?
                          WHERE user_id = ?'
-                    )->execute([$username, $email, $role, password_hash($newPassword, PASSWORD_DEFAULT), $userId]);
+                    )->execute([$username, $email, $role, $newHash, $userId]);
+
+                    if ($userId === currentUserId()) {
+                        rememberPasswordChange($newHash);
+                    }
                 } else {
                     $pdo->prepare(
                         'UPDATE users
@@ -191,7 +182,7 @@ if ($filterRole !== 'all') {
 
 if ($searchQuery !== '') {
     $where[] = '(username LIKE :search_username OR email LIKE :search_email)';
-    $searchLike = '%' . $searchQuery . '%';
+    $searchLike = likeContains($searchQuery);
     $params['search_username'] = $searchLike;
     $params['search_email'] = $searchLike;
 }
@@ -291,12 +282,7 @@ require_once __DIR__ . '/../layout/header.php';
     <span class="badge badge-blue"><?= $totalUsers ?> user<?= $totalUsers === 1 ? '' : 's' ?></span>
   </div>
 
-  <?php foreach ($flash['error'] as $flashMessage): ?>
-    <div class="flash-message flash-error" role="alert"><?= sanitise($flashMessage) ?></div>
-  <?php endforeach; ?>
-  <?php foreach ($flash['success'] as $flashMessage): ?>
-    <div class="flash-message flash-success" role="status"><?= sanitise($flashMessage) ?></div>
-  <?php endforeach; ?>
+  <?php renderFlash($flash); ?>
 
   <div class="dashboard-grid admin-user-summary-grid">
     <article class="stat-widget admin-user-summary-card">
@@ -334,17 +320,17 @@ require_once __DIR__ . '/../layout/header.php';
         <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">
         <input type="hidden" name="action" value="create">
 
-        <div class="form-group" style="margin-bottom:0;">
+        <div class="form-group mb-0">
           <label for="create_username">Username</label>
           <input type="text" id="create_username" name="username" maxlength="50" value="<?= sanitise($userForm['username']) ?>" required>
         </div>
 
-        <div class="form-group" style="margin-bottom:0;">
+        <div class="form-group mb-0">
           <label for="create_email">Email</label>
           <input type="email" id="create_email" name="email" maxlength="100" value="<?= sanitise($userForm['email']) ?>" required>
         </div>
 
-        <div class="form-group" style="margin-bottom:0;">
+        <div class="form-group mb-0">
           <label for="create_role">Role</label>
           <select id="create_role" name="role">
             <option value="participant" <?= $userForm['role'] === 'participant' ? 'selected' : '' ?>>participant</option>
@@ -353,7 +339,7 @@ require_once __DIR__ . '/../layout/header.php';
           </select>
         </div>
 
-        <div class="form-group" style="margin-bottom:0;">
+        <div class="form-group mb-0">
           <label for="create_password">Password</label>
           <input type="password" id="create_password" name="password" minlength="8" required>
         </div>
@@ -436,17 +422,17 @@ require_once __DIR__ . '/../layout/header.php';
                   <input type="hidden" name="user_id" value="<?= (int)$u['user_id'] ?>">
 
                   <div class="admin-user-edit-grid">
-                    <div class="form-group" style="margin-bottom:0;">
+                    <div class="form-group mb-0">
                       <label for="username_<?= (int)$u['user_id'] ?>">Username</label>
                       <input type="text" id="username_<?= (int)$u['user_id'] ?>" name="username" maxlength="50" value="<?= sanitise($u['username']) ?>" required>
                     </div>
 
-                    <div class="form-group" style="margin-bottom:0;">
+                    <div class="form-group mb-0">
                       <label for="email_<?= (int)$u['user_id'] ?>">Email</label>
                       <input type="email" id="email_<?= (int)$u['user_id'] ?>" name="email" maxlength="100" value="<?= sanitise($u['email']) ?>" required>
                     </div>
 
-                    <div class="form-group" style="margin-bottom:0;">
+                    <div class="form-group mb-0">
                       <label for="role_<?= (int)$u['user_id'] ?>">Role</label>
                       <select id="role_<?= (int)$u['user_id'] ?>" name="role" <?= (int)$u['user_id'] === currentUserId() ? 'disabled' : '' ?>>
                         <option value="participant" <?= $u['role'] === 'participant' ? 'selected' : '' ?>>participant</option>
@@ -458,7 +444,7 @@ require_once __DIR__ . '/../layout/header.php';
                       <?php endif; ?>
                     </div>
 
-                    <div class="form-group" style="margin-bottom:0;">
+                    <div class="form-group mb-0">
                       <label for="password_<?= (int)$u['user_id'] ?>">New password</label>
                       <input type="password" id="password_<?= (int)$u['user_id'] ?>" name="new_password" placeholder="Leave blank to keep current password">
                     </div>
@@ -478,7 +464,7 @@ require_once __DIR__ . '/../layout/header.php';
                       <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">
                       <input type="hidden" name="action" value="delete">
                       <input type="hidden" name="user_id" value="<?= (int)$u['user_id'] ?>">
-                      <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this user?');">Delete user</button>
+                      <button type="submit" class="btn btn-danger btn-sm" data-confirm="Delete this user?">Delete user</button>
                     </form>
                   <?php endif; ?>
                 </div>

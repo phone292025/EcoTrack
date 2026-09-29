@@ -1,7 +1,5 @@
 <?php
-require_once __DIR__ . '/../database/db.php';
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/bootstrap.php';
 
 requireRole('participant');
 
@@ -10,64 +8,7 @@ $uid = currentUserId();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
-    $rid = (int)($_POST['reward_id'] ?? 0);
-
-    if ($rid <= 0) {
-        setFlash('error', 'Invalid reward.');
-    } else {
-        $pdo->beginTransaction();
-        try {
-            $userStmt = $pdo->prepare('SELECT user_id, points FROM users WHERE user_id = ? FOR UPDATE');
-            $userStmt->execute([$uid]);
-            $userRow = $userStmt->fetch();
-
-            $stmt = $pdo->prepare('SELECT * FROM rewards WHERE reward_id = ? AND active = 1 FOR UPDATE');
-            $stmt->execute([$rid]);
-            $reward = $stmt->fetch();
-
-            if (!$userRow) {
-                $pdo->rollBack();
-                setFlash('error', 'User account not found.');
-            } elseif (!$reward) {
-                $pdo->rollBack();
-                setFlash('error', 'Reward not available.');
-            } elseif ((int)$reward['stock'] < 1) {
-                $pdo->rollBack();
-                setFlash('error', 'Out of stock.');
-            } elseif ((int)$userRow['points'] < (int)$reward['point_cost']) {
-                $pdo->rollBack();
-                setFlash('error', 'Not enough points.');
-            } else {
-                $cost = (int)$reward['point_cost'];
-                $updateStock = $pdo->prepare('UPDATE rewards SET stock = stock - 1 WHERE reward_id = ? AND stock > 0');
-                $updateStock->execute([$rid]);
-
-                if ($updateStock->rowCount() !== 1) {
-                    $pdo->rollBack();
-                    setFlash('error', 'Could not complete redemption.');
-                } else {
-                    $pdo->prepare(
-                        'INSERT INTO redemptions (user_id, reward_id, points_spent) VALUES (?, ?, ?)'
-                    )->execute([$uid, $rid, $cost]);
-                    $redemptionId = (int)$pdo->lastInsertId();
-
-                    if (!awardPoints($uid, -$cost, 'Redeemed: ' . $reward['name'], $redemptionId)) {
-                        $pdo->rollBack();
-                        setFlash('error', 'Not enough points.');
-                    } else {
-                        $pdo->commit();
-                        refreshSessionPoints();
-                        setFlash('success', 'Redeemed: ' . $reward['name'] . '.');
-                    }
-                }
-            }
-        } catch (Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            throw $e;
-        }
-    }
+    flashResult(redeemReward($uid, (int)($_POST['reward_id'] ?? 0)));
 
     // Redirect so refreshing the page cannot redeem a second time. Keep the
     // current filter/search so the user lands back where they were.
@@ -79,7 +20,7 @@ $user = getUserById($uid);
 
 $categoryFilter = trim($_GET['category'] ?? '');
 $searchQuery = trim($_GET['q'] ?? '');
-$allowedCategories = ['Lifestyle', 'Campus', 'Eco Essentials'];
+$allowedCategories = REWARD_CATEGORIES;
 
 $sql = 'SELECT * FROM rewards WHERE active = 1';
 $params = [];
@@ -91,7 +32,7 @@ if ($categoryFilter !== '' && in_array($categoryFilter, $allowedCategories, true
 
 if ($searchQuery !== '') {
     $sql .= ' AND (name LIKE ? OR description LIKE ?)';
-    $like = '%' . $searchQuery . '%';
+    $like = likeContains($searchQuery);
     $params[] = $like;
     $params[] = $like;
 }
@@ -101,22 +42,13 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $rewards = $stmt->fetchAll() ?: [];
 
-$redemptionStmt = $pdo->prepare(
-    'SELECT d.points_spent, d.redeemed_at, r.name
-     FROM redemptions d
-     INNER JOIN rewards r ON r.reward_id = d.reward_id
-     WHERE d.user_id = ?
-     ORDER BY d.redeemed_at DESC, d.redemption_id DESC
-     LIMIT 10'
-);
-$redemptionStmt->execute([$uid]);
-$redemptions = $redemptionStmt->fetchAll() ?: [];
+$redemptions = getUserRedemptions($uid, 10);
 
 $pageTitle = 'Green Shop';
 require_once __DIR__ . '/../layout/header.php';
 ?>
 
-<div class="container page-shell shop-page" style="max-width:1140px;">
+<div class="container page-shell shop-page container--lg">
   <div class="card shop-hero">
     <div class="shop-hero__row">
       <div>
@@ -129,20 +61,15 @@ require_once __DIR__ . '/../layout/header.php';
     </div>
   </div>
 
-  <?php foreach ($flash['error'] as $message): ?>
-    <div class="flash-message flash-error" role="alert"><?= sanitise($message) ?></div>
-  <?php endforeach; ?>
-  <?php foreach ($flash['success'] as $message): ?>
-    <div class="flash-message flash-success" role="status"><?= sanitise($message) ?></div>
-  <?php endforeach; ?>
+  <?php renderFlash($flash); ?>
 
-  <div class="card shop-filter-card" style="margin-bottom:var(--space-4);">
+  <div class="card shop-filter-card mb-4">
     <form method="GET" class="shop-filter-form">
-      <div class="form-group shop-filter-search" style="margin-bottom:0;">
+      <div class="form-group shop-filter-search mb-0">
         <label for="shop_q">Search rewards</label>
         <input type="text" id="shop_q" name="q" value="<?= sanitise($searchQuery) ?>" placeholder="Search by name or description">
       </div>
-      <div class="form-group shop-filter-category" style="margin-bottom:0;">
+      <div class="form-group shop-filter-category mb-0">
         <label for="shop_category">Category</label>
         <select id="shop_category" name="category">
           <option value="">All categories</option>
@@ -164,7 +91,7 @@ require_once __DIR__ . '/../layout/header.php';
       <p class="empty-state__text">Try a different category or search term to find something you can redeem.</p>
     </div>
   <?php else: ?>
-    <div class="card" style="margin-bottom:var(--space-4);">
+    <div class="card mb-4">
       <div class="card-header-row">
         <div class="card-header-row__content">
           <h2 class="card-title">Available Rewards Table</h2>
@@ -219,7 +146,7 @@ require_once __DIR__ . '/../layout/header.php';
 
   <?php endif; ?>
 
-  <div class="card" style="margin-top:var(--space-4);">
+  <div class="card mt-4">
     <div class="card-header-row">
       <div class="card-header-row__content">
         <h2 class="card-title">My Recent Redemptions</h2>
@@ -240,6 +167,7 @@ require_once __DIR__ . '/../layout/header.php';
               <th>Date</th>
               <th>Reward</th>
               <th>Points spent</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
@@ -249,6 +177,11 @@ require_once __DIR__ . '/../layout/header.php';
                 <td class="shop-history-table__cell--reward" data-label="Reward"><?= sanitise($row['name'] ?: 'Reward') ?></td>
                 <td data-label="Points spent" class="points-history-table__delta points-history-table__delta--negative shop-history-table__cell--spent">
                   -<?= (int)$row['points_spent'] ?>
+                </td>
+                <td data-label="Status">
+                  <span class="status-chip status-chip--<?= sanitise($row['status']) ?>">
+                    <?= $row['status'] === 'pending' ? 'Awaiting hand-over' : sanitise(ucfirst($row['status'])) ?>
+                  </span>
                 </td>
               </tr>
             <?php endforeach; ?>

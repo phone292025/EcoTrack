@@ -3,39 +3,25 @@
  * EcoTrack — Registration Page
  * File: register.php
  */
-require_once __DIR__ . '/database/db.php';
-require_once __DIR__ . '/includes/auth.php';
-require_once __DIR__ . '/includes/functions.php';
-require_once __DIR__ . '/includes/paths.php';
+require_once __DIR__ . '/includes/bootstrap.php';
 
 if (isLoggedIn()) redirectByRole();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
 
-    $username = trim($_POST['username'] ?? '');
-    $email    = trim($_POST['email']    ?? '');
-    $password = $_POST['password']         ?? '';
-    $confirm  = $_POST['confirm_password'] ?? '';
+    $username = trim((string)($_POST['username'] ?? ''));
+    $email    = trim((string)($_POST['email']    ?? ''));
+    $password = (string)($_POST['password']         ?? '');
+    $confirm  = (string)($_POST['confirm_password'] ?? '');
 
-    $errors = [];
-
-    // Server-side validation (mirrors JS validation)
-    if (strlen($username) < 3 || strlen($username) > 50)
-        $errors[] = 'Username must be 3-50 characters.';
-    elseif (!preg_match('/^[a-zA-Z0-9_]+$/', $username))
-        $errors[] = 'Username may only contain letters, numbers, and underscores.';
-
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL))
-        $errors[] = 'Please enter a valid email address.';
-
-    if (strlen($password) < 8)
-        $errors[] = 'Password must be at least 8 characters.';
-    elseif (!preg_match('/[A-Z]/', $password) || !preg_match('/[0-9]/', $password))
-        $errors[] = 'Password must include at least one uppercase letter and one number.';
-
-    if ($password !== $confirm)
-        $errors[] = 'Passwords do not match.';
+    // Server-side validation (mirrors the JS checks, which are only a convenience)
+    $errors = array_values(array_filter([
+        usernameProblem($username),
+        emailProblem($email),
+        passwordProblem($password),
+        $password !== $confirm ? 'Passwords do not match.' : null,
+    ]));
 
     // Check uniqueness up front for a friendly message. The UNIQUE constraints
     // on the table are what actually guarantee it — two simultaneous requests
@@ -98,9 +84,7 @@ $pageTitle = 'Register';
       <p class="auth-subtitle">Start tracking your eco-friendly activities today</p>
     </div>
 
-    <?php foreach ($flash['error'] as $message): ?>
-      <div class="flash-message flash-error" role="alert"><?= sanitise($message) ?></div>
-    <?php endforeach; ?>
+    <?php renderFlash($flash); ?>
 
     <form method="POST" action="<?= BASE_URL ?>/register.php" data-validate="register" novalidate>
       <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">

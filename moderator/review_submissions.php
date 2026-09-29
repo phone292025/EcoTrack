@@ -1,7 +1,5 @@
 <?php
-require_once __DIR__ . '/../database/db.php';
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/bootstrap.php';
 
 requireRole('moderator', 'admin');
 
@@ -13,88 +11,13 @@ const REVIEW_PER_PAGE = 20;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf($_POST['csrf'] ?? '');
-    $logId = (int)($_POST['log_id'] ?? 0);
-    $action = $_POST['submission_action'] ?? '';
-    $note = trim($_POST['review_note'] ?? '');
-
-    if ($logId <= 0) {
-        setFlash('error', 'Invalid submission selected.');
-    } elseif (!in_array($action, ['approve', 'reject', 'flag'], true) || ($isAdmin && $action === 'flag')) {
-        setFlash('error', 'Invalid moderation action.');
-    } else {
-        // Points and challenge completions are settled here, in the request
-        // that actually changes the submission's status.
-        $approvedUserId = null;
-
-        $pdo->beginTransaction();
-        try {
-            $stmt = $pdo->prepare('SELECT * FROM activity_logs WHERE log_id = ? FOR UPDATE');
-            $stmt->execute([$logId]);
-            $log = $stmt->fetch();
-
-            if (!$log) {
-                $pdo->rollBack();
-                setFlash('error', 'Submission not found.');
-            } elseif ($action === 'flag' && $log['status'] !== 'pending') {
-                $pdo->rollBack();
-                setFlash('error', 'Only pending submissions can be flagged.');
-            } elseif (in_array($action, ['approve', 'reject'], true) && !in_array($log['status'], ['pending', 'flagged'], true)) {
-                $pdo->rollBack();
-                setFlash('error', 'This submission has already been resolved.');
-            } elseif ($log['status'] === 'flagged' && !$isAdmin && $action !== 'flag') {
-                $pdo->rollBack();
-                setFlash('error', 'Only admins can resolve flagged submissions.');
-            } else {
-                if ($action === 'approve') {
-                    $pdo->prepare(
-                        'UPDATE activity_logs
-                         SET status = "approved", review_note = NULLIF(?, ""),
-                             reviewed_by = ?, reviewed_at = NOW()
-                         WHERE log_id = ?'
-                    )->execute([$note, $reviewerId, $logId]);
-
-                    awardPoints((int)$log['user_id'], (int)$log['points'], 'Activity approved', $logId);
-                    $approvedUserId = (int)$log['user_id'];
-                    setFlash('success', 'Submission approved.');
-                } elseif ($action === 'reject') {
-                    $pdo->prepare(
-                        'UPDATE activity_logs
-                         SET status = "rejected", review_note = NULLIF(?, ""),
-                             reviewed_by = ?, reviewed_at = NOW()
-                         WHERE log_id = ?'
-                    )->execute([$note, $reviewerId, $logId]);
-
-                    setFlash('success', $note !== ''
-                        ? 'Submission rejected and the reason was sent to the participant.'
-                        : 'Submission rejected.');
-                } else {
-                    $pdo->prepare(
-                        'UPDATE activity_logs
-                         SET status = "flagged", review_note = NULLIF(?, ""),
-                             flagged_by = ?, reviewed_by = NULL, reviewed_at = NULL
-                         WHERE log_id = ?'
-                    )->execute([$note, $reviewerId, $logId]);
-
-                    setFlash('success', 'Submission flagged for admin review.');
-                }
-
-                $pdo->commit();
-            }
-        } catch (Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            throw $e;
-        }
-
-        // Streaks, goals and challenge completions follow the approval and
-        // open their own transactions.
-        if ($approvedUserId !== null) {
-            applyStreakBonuses($approvedUserId);
-            refreshUserChallengeProgress($approvedUserId);
-            applyGoalCompletion($approvedUserId);
-        }
-    }
+    flashResult(reviewSubmission(
+        $reviewerId,
+        $isAdmin,
+        (int)($_POST['log_id'] ?? 0),
+        (string)($_POST['submission_action'] ?? ''),
+        (string)($_POST['review_note'] ?? '')
+    ));
 
     redirectToSelf($_SERVER['QUERY_STRING'] ?? '');
 }
@@ -177,10 +100,10 @@ function renderSubmission(array $row, bool $isAdmin, bool $isFlaggedQueue): void
 
       <?php if (!empty($row['evidence'])): ?>
         <div class="submission-evidence">
-          <img src="<?= BASE_URL ?>/uploads/evidence/<?= sanitise($row['evidence']) ?>"
+          <img src="<?= sanitise(evidenceUrl($row['evidence'])) ?>"
                alt="Evidence image from <?= sanitise($row['username']) ?>"
                loading="lazy" decoding="async">
-          <a href="<?= BASE_URL ?>/uploads/evidence/<?= sanitise($row['evidence']) ?>"
+          <a href="<?= sanitise(evidenceUrl($row['evidence'])) ?>"
              target="_blank" rel="noopener">Open full image</a>
         </div>
       <?php endif; ?>
@@ -194,7 +117,7 @@ function renderSubmission(array $row, bool $isAdmin, bool $isFlaggedQueue): void
             Note to participant <span class="field-optional">(required when rejecting)</span>
           </label>
           <input type="text" id="note_<?= (int)$row['log_id'] ?>" name="review_note"
-                 maxlength="255" placeholder="Explain what was missing or unclear">
+                 maxlength="<?= REVIEW_NOTE_MAX ?>" placeholder="Explain what was missing or unclear">
         </div>
 
         <div class="submission-actions__buttons">
@@ -228,12 +151,7 @@ function renderSubmission(array $row, bool $isAdmin, bool $isFlaggedQueue): void
     </div>
   </div>
 
-  <?php foreach ($flash['error'] as $message): ?>
-    <div class="flash-message flash-error" role="alert"><?= sanitise($message) ?></div>
-  <?php endforeach; ?>
-  <?php foreach ($flash['success'] as $message): ?>
-    <div class="flash-message flash-success" role="status"><?= sanitise($message) ?></div>
-  <?php endforeach; ?>
+  <?php renderFlash($flash); ?>
 
   <div class="panel-stack">
     <div class="card review-panel">

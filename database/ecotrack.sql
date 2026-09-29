@@ -164,30 +164,44 @@ CREATE TABLE IF NOT EXISTS rewards (
 
 -- --------------------------------------------------------
 -- 10. REDEMPTIONS
+--     pending   = points taken, item still to be handed over
+--     fulfilled = handed over
+--     cancelled = points refunded and the item restocked
+--     A reward that has been redeemed cannot be deleted (RESTRICT);
+--     the admin page hides it instead, so nobody's history disappears.
 -- --------------------------------------------------------
 CREATE TABLE IF NOT EXISTS redemptions (
   redemption_id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   reward_id INT NOT NULL,
   points_spent INT NOT NULL,
+  status ENUM('pending','fulfilled','cancelled') NOT NULL DEFAULT 'pending',
+  handled_by INT DEFAULT NULL,
+  handled_at DATETIME DEFAULT NULL,
   redeemed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_redemptions_user (user_id),
+  INDEX idx_redemptions_status (status, redeemed_at),
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-  FOREIGN KEY (reward_id) REFERENCES rewards(reward_id) ON DELETE CASCADE
+  FOREIGN KEY (reward_id) REFERENCES rewards(reward_id) ON DELETE RESTRICT,
+  FOREIGN KEY (handled_by) REFERENCES users(user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 -- 11. POINTS LEDGER
 --     Authoritative record. users.points must always equal SUM(delta).
+--     kind says what the movement was (see LEDGER_KINDS in
+--     includes/rules.php); reason is the text shown to the participant.
 -- --------------------------------------------------------
 CREATE TABLE IF NOT EXISTS points_transactions (
   txn_id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   delta INT NOT NULL,
+  kind VARCHAR(20) NOT NULL DEFAULT 'adjustment',
   reason VARCHAR(255) DEFAULT NULL,
   ref_id INT DEFAULT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_txn_user_date (user_id, created_at),
+  INDEX idx_txn_user_kind (user_id, kind, created_at),
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -272,7 +286,7 @@ INSERT INTO rewards (name, description, category, point_cost, stock) VALUES
 -- Password: EcoAdmin2026
 INSERT INTO users (username, email, password, role) VALUES
   ('admin', 'admin@ecotrack.com',
-   'y$TWyue8NQZBGzkVpeMfNFuerQFYHdz1iCdzrfdKOBmCbPnvYv/HCve',
+   '$2y$10$TWyue8NQZBGzkVpeMfNFuerQFYHdz1iCdzrfdKOBmCbPnvYv/HCve',
    'admin');
 
 -- Default Moderator account
@@ -281,5 +295,5 @@ INSERT INTO users (username, email, password, role) VALUES
 -- Password: EcoMod2026
 INSERT INTO users (username, email, password, role) VALUES
   ('moderator', 'mod@ecotrack.com',
-   'y$ki7KA8v9RVP352M0S5vofu4WEwJQY0nE51u8Vh6w5z.8wS7dvUIea',
+   '$2y$10$ki7KA8v9RVP352M0S5vofu4WEwJQY0nE51u8Vh6w5z.8wS7dvUIea',
    'moderator');

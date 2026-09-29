@@ -7,10 +7,7 @@
  * NOTE: this file must stay UTF-8 *without* a BOM. A BOM is sent to the
  * browser as output, which breaks the redirect below.
  */
-require_once __DIR__ . '/database/db.php';
-require_once __DIR__ . '/includes/auth.php';
-require_once __DIR__ . '/includes/functions.php';
-require_once __DIR__ . '/includes/paths.php';
+require_once __DIR__ . '/includes/bootstrap.php';
 
 if (isLoggedIn()) redirectByRole();
 
@@ -44,60 +41,6 @@ function featureIcon(string $path): string
   <title><?= sanitise($pageTitle) ?></title>
   <link rel="icon" href="<?= BASE_URL ?>/assets/img/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/style.css">
-  <style>
-    /* Landing-page only styles */
-    .hero {
-      background: linear-gradient(135deg, #1e6b4e 0%, #2d936c 50%, #3db883 100%);
-      color: #fff;
-      text-align: center;
-      padding: 5rem 1.5rem 4rem;
-      border-radius: var(--radius-lg);
-      margin-bottom: 3rem;
-    }
-    .hero h1 { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 800; margin-bottom: 1rem; }
-    .hero p  { font-size: clamp(1rem, 2.5vw, 1.3rem); opacity: 0.9; max-width: 600px; margin: 0 auto 2rem; }
-    .hero-btns { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
-    .btn-white { background:#fff; color:var(--clr-primary); font-weight:700; padding:0.75em 2.2em; border-radius:var(--radius-full); font-size:1rem; transition:transform 0.2s; }
-    .btn-white:hover { transform:translateY(-2px); text-decoration:none; color:var(--clr-primary-dark); }
-    .btn-outline-white { background:transparent; color:#fff; border:2px solid #fff; font-weight:700; padding:0.75em 2.2em; border-radius:var(--radius-full); font-size:1rem; }
-    .btn-outline-white:hover { background:rgba(255,255,255,0.15); text-decoration:none; color:#fff; }
-
-    .features-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 1.5rem;
-      margin-bottom: 3rem;
-    }
-    .features-grid--secondary {
-      max-width: 620px;
-      margin: 0 auto 3rem;
-    }
-    .feature-card {
-      background: var(--clr-surface);
-      border: 1px solid var(--clr-border);
-      border-radius: var(--radius-md);
-      padding: 2rem 1.5rem;
-      text-align: center;
-    }
-    .feature-icon {
-      display: block;
-      margin: 0 auto 1rem;
-      color: var(--clr-primary);
-    }
-    .feature-card h3 { font-size: 1.1rem; margin-bottom: 0.5rem; color: var(--clr-primary); }
-    .feature-card p  { font-size: 0.9rem; color: var(--clr-text-muted); }
-
-    .section-title { font-size: 1.8rem; font-weight: 700; text-align:center; margin-bottom:2rem; }
-
-    @media (min-width: 900px) {
-      .features-grid--primary {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-      }
-      .features-grid--secondary {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-    }
-  </style>
 </head>
 <body>
 
@@ -172,7 +115,7 @@ function featureIcon(string $path): string
   </div>
 
   <!-- CTA -->
-  <div style="text-align:center;padding:3rem 0 1rem;">
+  <div class="landing-cta">
     <a href="<?= BASE_URL ?>/register.php" class="btn btn-primary btn-lg">
       Join EcoTrack Today
     </a>

@@ -1,0 +1,26 @@
+# EcoTrack — Apache rules. router.php applies the same rules under PHP's
+# built-in server, which ignores this file.
+
+Options -Indexes
+
+# Never serve SQL dumps, docs, logs, backups, config or dotfiles.
+<FilesMatch "(\.(sql|md|log|bak|ini|sh)|^\..*)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# router.php is only for the built-in server.
+<Files "router.php">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</Files>
