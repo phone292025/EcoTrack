@@ -3,6 +3,13 @@
 
 Options -Indexes
 
+# Nothing inside a dot-directory (.git, .github) or any dotfile is served.
+# FilesMatch below only sees the file name, so on its own it cannot catch
+# /.git/config, whose name is just "config".
+<IfModule mod_alias.c>
+    RedirectMatch 404 "/\."
+</IfModule>
+
 # Never serve SQL dumps, docs, logs, backups, config or dotfiles.
 <FilesMatch "(\.(sql|md|log|bak|ini|sh)|^\..*)$">
     <IfModule mod_authz_core.c>

@@ -86,6 +86,8 @@ final class HttpClient
             CURLOPT_HTTPGET => $method === 'GET',
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => false,
+            // Send paths exactly as written, so tests can probe "//x" and "/./x".
+            CURLOPT_PATH_AS_IS => true,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_TIMEOUT => 20,
             CURLOPT_HEADERFUNCTION => static function ($curl, string $line) use (&$responseHeaders): int {

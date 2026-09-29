@@ -10,7 +10,12 @@
  * nothing under uploads/ is ever run as PHP.
  */
 
-$path = rawurldecode((string)parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH));
+// Normalise the path before matching. parse_url() is not used on purpose:
+// it reads "//.git/config" as host ".git" plus path "/config", which would
+// let a doubled slash walk straight past every rule below.
+$uri = (string)($_SERVER['REQUEST_URI'] ?? '/');
+$path = rawurldecode(explode('?', $uri, 2)[0]);
+$path = '/' . ltrim((string)preg_replace('#[/\\\\]+#', '/', $path), '/');
 
 $blocked = '#^/(?:database|includes|layout|scripts|tests|\.git|\.github)(?:/|$)'
     . '|^/uploads/evidence/'

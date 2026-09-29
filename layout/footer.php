@@ -5,6 +5,12 @@
  *
  * Loads main.js, then any page scripts listed in $pageScripts.
  */
+// Only ever included by a page; see layout/header.php.
+if (!function_exists('currentRole')) {
+    http_response_code(404);
+    exit;
+}
+
 require_once __DIR__ . '/../includes/paths.php';
 $footerRole  = currentRole() ?: 'guest';
 $pageScripts = $pageScripts ?? [];

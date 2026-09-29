@@ -9,6 +9,13 @@
  *   $pageScripts (string[]) — extra scripts under assets/js/ for this page,
  *                             loaded by layout/footer.php
  */
+// Only ever included by a page. Requested directly (on a server that ignores
+// .htaccess) there is nothing to render, so answer 404 instead of erroring.
+if (!function_exists('currentRole')) {
+    http_response_code(404);
+    exit;
+}
+
 require_once __DIR__ . '/../includes/paths.php';
 $pageTitle   = $pageTitle ?? 'EcoTrack';
 $needsCharts = $needsCharts ?? false;

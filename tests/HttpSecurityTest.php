@@ -154,6 +154,15 @@ final class HttpSecurityTest extends HttpTestCase
             '/README.md',
             '/.gitignore',
             '/router.php',
+            // Doubled slashes and dot segments must not slip past the rules.
+            '//.git/config',
+            '//README.md',
+            '//includes/functions.php',
+            '//database/ecotrack.sql',
+            '///scripts/migrate.php',
+            '/./README.md',
+            '/participant/../includes/functions.php',
+            '/%2Fincludes/functions.php',
         ] as $path) {
             $this->assertSame(404, $client->get($path)->status, $path);
         }
@@ -175,6 +184,7 @@ final class HttpSecurityTest extends HttpTestCase
 
             $url = '/evidence.php?file=' . $name;
             $this->assertSame(404, $this->client()->get('/uploads/evidence/' . $name)->status, 'direct path');
+            $this->assertSame(404, $this->client()->get('//uploads/evidence/' . $name)->status, 'direct path, doubled slash');
             $this->assertSame('/login.php', $this->client()->get($url)->location(), 'guest');
             $this->assertSame(404, $this->participant('stranger')->get($url)->status, 'other participant');
 
