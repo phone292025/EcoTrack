@@ -111,14 +111,6 @@ function navLink(string $href, string $label, string $currentScript): string
         <?= navLink(BASE_URL . '/register.php', 'Register', $currentScript) ?>
       <?php endif; ?>
 
-      <?php if (isLoggedIn()): ?>
-        <!-- A form, not a link: logging out changes state, so it is a POST
-             with a CSRF token and no other site can trigger it. -->
-        <form method="POST" action="<?= BASE_URL ?>/logout.php" class="nav-logout-form">
-          <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">
-          <button type="submit" class="nav-logout">Logout</button>
-        </form>
-      <?php endif; ?>
     </nav>
 
     <!-- Points badge (participants only — moderators and admins do not earn) -->
@@ -127,6 +119,14 @@ function navLink(string $href, string $label, string $currentScript): string
         <img src="<?= BASE_URL ?>/assets/img/icon_leaf.svg" alt="" width="16" height="16">
         <span id="navPointsBadge"><?= (int)$navPoints ?> pts</span>
       </div>
+    <?php endif; ?>
+
+    <?php if (isLoggedIn()): ?>
+      <!-- Keep logout at the right edge, separate from the centered links. -->
+      <form method="POST" action="<?= BASE_URL ?>/logout.php" class="nav-logout-form">
+        <input type="hidden" name="csrf" value="<?= sanitise(csrfToken()) ?>">
+        <button type="submit" class="nav-logout">Logout</button>
+      </form>
     <?php endif; ?>
 
   </div>

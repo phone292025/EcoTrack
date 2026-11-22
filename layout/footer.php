@@ -25,15 +25,12 @@ $pageScripts = $pageScripts ?? [];
     </div>
     <div class="footer-links">
       <?php if ($footerRole === 'participant'): ?>
-        <a href="<?= BASE_URL ?>/participant/dashboard.php">Dashboard</a>
         <a href="<?= BASE_URL ?>/participant/leaderboard.php">Leaderboard</a>
         <a href="<?= BASE_URL ?>/participant/shop.php">Green Shop</a>
       <?php elseif ($footerRole === 'moderator'): ?>
-        <a href="<?= BASE_URL ?>/moderator/dashboard.php">Dashboard</a>
         <a href="<?= BASE_URL ?>/moderator/review_submissions.php">Review queue</a>
       <?php elseif ($footerRole === 'admin'): ?>
-        <a href="<?= BASE_URL ?>/admin/dashboard.php">Dashboard</a>
-        <a href="<?= BASE_URL ?>/admin/user_management.php">Users</a>
+        <!-- Admin footer links removed; primary navigation is in the header. -->
       <?php else: ?>
         <a href="<?= BASE_URL ?>/index.php">Home</a>
         <a href="<?= BASE_URL ?>/login.php">Login</a>

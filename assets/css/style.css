@@ -134,7 +134,7 @@ ul, ol { list-style: none; }
   align-items: center;
   justify-content: center;
   gap:         0.2rem;
-  margin-left: auto;
+  margin-left: 0;
   flex:        1 1 auto;
   flex-wrap:   nowrap;
   min-width:   0;
@@ -142,6 +142,8 @@ ul, ol { list-style: none; }
 
 .nav-menu--guest {
   justify-content: flex-end;
+  margin-left: auto;
+  flex: 1 1 auto;
 }
 
 .nav-menu a {
@@ -159,9 +161,9 @@ ul, ol { list-style: none; }
   color:      var(--clr-primary);
   text-decoration: none;
 }
-/* Logout is a POST form; the button inside looks like the other nav items. */
-.nav-logout-form { display: contents; }
-.nav-menu .nav-logout {
+/* Logout is a POST form positioned after the centered role links. */
+.nav-logout-form { display: flex; flex: 0 0 auto; }
+.nav-logout {
   padding:       0.55rem 0.65rem;
   border:        0;
   border-radius: var(--radius-sm);
@@ -174,8 +176,8 @@ ul, ol { list-style: none; }
   cursor:        pointer;
   transition:    background var(--transition);
 }
-.nav-menu .nav-logout:hover,
-.nav-menu .nav-logout:focus-visible { background: #b83035; }
+.nav-logout:hover,
+.nav-logout:focus-visible { background: #b83035; }
 
 .nav-points {
   display:     flex;

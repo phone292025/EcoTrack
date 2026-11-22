@@ -55,7 +55,7 @@ function featureIcon(string $path): string
             aria-expanded="false" aria-controls="navMenu">
       <span></span><span></span><span></span>
     </button>
-    <nav class="nav-menu" id="navMenu">
+    <nav class="nav-menu nav-menu--guest" id="navMenu">
       <a href="<?= BASE_URL ?>/login.php">Log In</a>
       <a href="<?= BASE_URL ?>/register.php" class="btn btn-primary btn-sm">Get Started</a>
     </nav>
